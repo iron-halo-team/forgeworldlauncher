@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+dist/
+dist-electron/
+release/
+
+# Local imported client and local pack content
+client/
+distribution-source/mods/
+distribution-source/resourcepacks/
+distribution-source/shaderpacks/
+distribution-source/servers.dat
+distribution-source/options.txt
+distribution-source/optionsof.txt
+
+# Runtime / caches
+.tmp/
+*.tmp
+*.cache
+build/.installer-cache/
+build/.distribution-workdir/
+
+# Logs and local diagnostics
+*.log
+tmp-*.log
+
+# Temporary installer/debug artifacts
+installer.chunk
+installer.curl.jar
+installer.curl.range.jar
+installer.part1.jar
+installer.part1.node
+installer.resume.jar
+BIT32CC.tmp
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini

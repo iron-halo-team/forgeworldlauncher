@@ -1,0 +1,94 @@
+{
+  "name": "forge-world-launcher",
+  "version": "1.2.0",
+  "description": "Offline-first Minecraft launcher for a single bundled NeoForge 1.21.1 server build.",
+  "main": "dist-electron/electron/main.js",
+  "author": "OpenAI Codex",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "postinstall": "tsx scripts/patch-dependencies.ts",
+    "patch:deps": "tsx scripts/patch-dependencies.ts",
+    "dev": "npm run patch:deps && concurrently -k \"npm:dev:renderer\" \"npm:dev:electron:build\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --host 127.0.0.1 --port 5173",
+    "dev:electron:build": "tsc -p tsconfig.electron.json --watch --preserveWatchOutput",
+    "dev:electron": "wait-on tcp:5173 file:dist-electron/electron/main.js && electron .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "tsx scripts/build.ts",
+    "prepare:distribution": "npm run patch:deps && tsx scripts/prepare-distribution.ts",
+    "dist": "tsx scripts/package-release.ts",
+    "dist:dir": "tsx scripts/package-release.ts --dir"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-sans": "^5.2.8",
+    "@fontsource/jura": "^5.2.7",
+    "@fontsource/tektur": "^5.2.7",
+    "@xmcl/client": "^3.2.0",
+    "@xmcl/core": "^2.15.1",
+    "@xmcl/installer": "^6.1.2",
+    "@xmcl/user": "^4.3.0",
+    "clsx": "^2.1.1",
+    "fs-extra": "^11.3.5",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "semver": "^7.8.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/semver": "^7.7.1",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.forgeworld.launcher",
+    "productName": "Forge World Launcher",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "content/**/*",
+      "ico/**/*",
+      "launcher.config.json",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/offline-distribution",
+        "to": "offline-distribution",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "afterPack": "scripts/after-pack-icon.cjs",
+    "win": {
+      "icon": "ico/forgeworld_multisize.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Forge-World-Launcher-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

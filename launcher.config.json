@@ -1,0 +1,48 @@
+{
+  "appId": "forge-world-launcher",
+  "launcherVersion": "3.0",
+  "distributionVersion": "3.0",
+  "branding": {
+    "projectName": "FORGE WORLD",
+    "subtitle": [
+      "Погрузись в мир, где честь — редкость,",
+      "а сила решает судьбы."
+    ]
+  },
+  "minecraft": {
+    "version": "1.21.1",
+    "neoForgeVersion": "21.1.229",
+    "defaultVersionId": "neoforge-21.1.229",
+    "instanceFolderName": "forge-world-instance",
+    "defaultRamMb": 6144,
+    "minimumRamMb": 3072,
+    "maximumRamMb": 16384,
+    "minimumLaunchRamMb": 2048,
+    "directConnectOnLaunch": true,
+    "server": {
+      "host": "f10.joinserver.xyz",
+      "port": 25684,
+      "displayName": "Forge World"
+    }
+  },
+  "links": {
+    "site": "https://github.com/iron-halo-team/forgeworld",
+    "discord": "https://discord.gg/sBJQqKtB",
+    "wiki": "https://github.com/iron-halo-team/forgeworld/wiki",
+    "github": "https://github.com/iron-halo-team/forgeworld"
+  },
+  "update": {
+    "metadataUrl": "https://example.com/forge-world/update.json",
+    "downloadPage": "https://example.com/forge-world/download"
+  },
+  "preserveOnUpdate": [
+    "options.txt",
+    "optionsof.txt",
+    "servers.dat",
+    "saves",
+    "screenshots",
+    "resourcepacks",
+    "shaderpacks",
+    "logs"
+  ]
+}

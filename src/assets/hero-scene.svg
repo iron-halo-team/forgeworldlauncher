@@ -1,0 +1,26 @@
+<svg width="860" height="720" viewBox="0 0 860 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="860" height="720" fill="url(#paint0_radial)"/>
+  <circle cx="585" cy="178" r="118" fill="#552E35" fill-opacity="0.72"/>
+  <path d="M420 204H520L482 234H398L420 204Z" fill="#2A3037"/>
+  <path d="M618 145H680L652 171H590L618 145Z" fill="#262D35"/>
+  <path d="M703 178H760L735 197H680L703 178Z" fill="#222931"/>
+  <path d="M519 620H258L323 551H355L376 472H430L455 319H496L513 219H544L556 319H588L606 257H625L639 319H660L688 551H735L784 620H633L585 474H555L519 620Z" fill="#0B0F14"/>
+  <path d="M520 620H274L332 567H358L377 495H426L446 332H481L497 219H533L547 332H576L597 277H619L631 332H653L678 567H718L760 620H625L581 492H554L520 620Z" fill="#131922"/>
+  <rect x="498" y="398" width="18" height="38" fill="#BB5F5B"/>
+  <rect x="560" y="354" width="18" height="42" fill="#BB5F5B"/>
+  <rect x="609" y="428" width="18" height="32" fill="#BB5F5B"/>
+  <path d="M223 620H92L122 578H171L202 530H235L257 620H223Z" fill="#10151C"/>
+  <path d="M192 620H36L56 587H108L148 553H177L192 620Z" fill="#131922"/>
+  <path d="M494 620H0V720H860V620H494Z" fill="url(#paint1_linear)"/>
+  <defs>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(528 222) rotate(132.136) scale(567.193 682.532)">
+      <stop stop-color="#10151B"/>
+      <stop offset="0.42" stop-color="#0B0F14"/>
+      <stop offset="1" stop-color="#06090D"/>
+    </radialGradient>
+    <linearGradient id="paint1_linear" x1="430" y1="620" x2="430" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#080B10" stop-opacity="0"/>
+      <stop offset="1" stop-color="#06080C"/>
+    </linearGradient>
+  </defs>
+</svg>
