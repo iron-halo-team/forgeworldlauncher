@@ -1,116 +1,120 @@
-# Forge World Launcher — памятка
+# Forge World Launcher
 
-## Где менять тексты и ссылки
+Официальный офлайн-лаунчер Forge World для подготовленной сборки **NeoForge 1.21.1**.
 
-### Основные настройки лаунчера
-- [launcher.config.json](/C:/Users/Acair/Documents/New%20project/launcher.config.json)
+## Возможности
 
-Здесь меняются:
-- `branding.projectName` — название проекта
-- `branding.subtitle` — подпись в центре
-- `links.discord`, `links.wiki`, `links.github`, `links.support` — ссылки
-- `minecraft.server.host`, `minecraft.server.port` — адрес сервера
-- `launcherVersion` — версия лаунчера
-- `distributionVersion` — версия встроенной сборки
+- Один встроенный клиент: Minecraft 1.21.1 + NeoForge + ваши моды и конфиги.
+- Офлайн-вход по нику без Microsoft-авторизации.
+- Автоподключение к серверу после запуска игры.
+- Встроенная Java и локальная сборка клиента внутри релиза.
+- Новости сервера и интерактивная хронология мира.
+- Настройки памяти, поведения окна и быстрый доступ к папкам лаунчера.
+- Уведомление о новой версии через внешний `update.json`.
 
-### Новости и летопись
-- [content/launcher-content.json](/C:/Users/Acair/Documents/New%20project/content/launcher-content.json)
+## Стек
 
-Здесь меняются:
-- `news[]` — новости справа
-- `timeline[]` — нижняя лента исторических событий
+- Electron
+- React
+- TypeScript
+- Vite
+- electron-builder
+- `@xmcl/core` для запуска Minecraft
 
-## Где менять внешний вид
+## Быстрый старт для разработки
 
-### Основные картинки
-- [src/assets/logo-mark.svg](/C:/Users/Acair/Documents/New%20project/src/assets/logo-mark.svg) — логотип слева
-- [src/assets/hero-scene.svg](/C:/Users/Acair/Documents/New%20project/src/assets/hero-scene.svg) — большая центральная иллюстрация
-
-Если хочешь просто заменить изображения, удобнее всего оставить те же имена файлов и подменить содержимое.
-
-### Фон, рамки, кнопки, цвета
-- [src/styles/index.css](/C:/Users/Acair/Documents/New%20project/src/styles/index.css)
-
-Главные блоки:
-- `:root` — палитра и базовые переменные
-- `.launcher-shell` — фон всего окна
-- `.hero-art::before` — затемнение поверх правой картинки
-- `.play-button` — кнопка "Играть"
-- `.nav-button`, `.ghost-button`, `.support-button` — остальные кнопки
-
-### Если нужны именно текстуры кнопок
-1. Положи PNG или SVG в `src/assets/`
-2. В [src/styles/index.css](/C:/Users/Acair/Documents/New%20project/src/styles/index.css) добавь `background-image`
-3. Пересобери релиз
-
-Пример:
-
-```css
-.play-button {
-  background-image: url('./../assets/play-button.png');
-  background-size: cover;
-  background-position: center;
-}
+```bash
+npm install
+npm run dev
 ```
 
-## Как встроить готовую NeoForge 1.21.1 сборку
+Для проверки production-сборки:
 
-Лаунчер уже умеет сам собирать базу:
-- Minecraft `1.21.1`
-- NeoForge `21.1.229`
+```bash
+npm run build
+npm run dist:dir
+```
 
-После этого он докладывает сверху твои файлы из папки:
-- [distribution-source](/C:/Users/Acair/Documents/New%20project/distribution-source)
+Полный релиз с установщиком:
 
-### Что можно класть в `distribution-source`
-- `mods/`
-- `config/`
-- `defaultconfigs/`
-- `resourcepacks/`
-- `shaderpacks/`
-- `kubejs/`
-- `journeymap/`
-- `patchouli_books/`
-- любые другие папки клиентской сборки
-- корневые файлы вроде `options.txt`, `optionsof.txt`, `servers.dat`
+```bash
+npm run dist
+```
 
-### Если у тебя уже есть готовый клиент
-Просто перенеси из него содержимое в `distribution-source`, сохраняя структуру.
+Готовые файлы появятся в папке `release/`.
 
-Примеры:
-- `готовая_сборка/mods` → `distribution-source/mods`
-- `готовая_сборка/config` → `distribution-source/config`
-- `готовая_сборка/kubejs` → `distribution-source/kubejs`
-- `готовая_сборка/options.txt` → `distribution-source/options.txt`
-- `готовая_сборка/servers.dat` → `distribution-source/servers.dat`
+## Как собрать клиент
 
-## Как собрать новый релиз
-
-1. Обнови файлы в `distribution-source/`
-2. При необходимости обнови:
-   - [launcher.config.json](/C:/Users/Acair/Documents/New%20project/launcher.config.json)
-   - [content/launcher-content.json](/C:/Users/Acair/Documents/New%20project/content/launcher-content.json)
-3. Выполни:
+Локальные игровые файлы не должны храниться в GitHub-репозитории. Для подготовки новой версии положите нужные файлы в `distribution-source/`, затем выполните:
 
 ```bash
 npm run prepare:distribution
 npm run dist
 ```
 
-## Что делают команды
+Обычно в `distribution-source/` добавляют:
 
-- `npm run prepare:distribution`
-  - собирает офлайн-клиент
-  - встраивает NeoForge
-  - копирует моды и конфиги
-  - кладёт итог в `build/offline-distribution`
+- `mods/` — моды сервера.
+- `config/` — конфиги модов.
+- `resourcepacks/` — ресурспаки, если нужны.
+- `shaderpacks/` — шейдеры, если нужны.
+- `options.txt`, `servers.dat` — настройки клиента и список серверов.
 
-- `npm run dist`
-  - собирает сам лаунчер `.exe`
+Подготовленная офлайн-сборка создаётся в `build/offline-distribution/` и автоматически попадает в релиз.
 
-## Где лежит результат
+## Как обновить NeoForge
 
-- готовая игра:
-  - [build/offline-distribution](/C:/Users/Acair/Documents/New%20project/build/offline-distribution)
-- готовый лаунчер:
-  - [release](/C:/Users/Acair/Documents/New%20project/release)
+1. Обновите версии в `launcher.config.json`: `neoForgeVersion`, `defaultVersionId`, при необходимости `distributionVersion` и `launcherVersion`.
+2. Обновите моды и конфиги в `distribution-source/`.
+3. Выполните `npm run prepare:distribution`.
+4. Проверьте запуск через `npm run dist:dir`.
+5. Соберите новый установщик через `npm run dist`.
+6. Опубликуйте новый релиз и обновите ссылку/метаданные обновления.
+
+## Контент лаунчера
+
+Основные файлы для ручного редактирования:
+
+- `launcher.config.json` — версия лаунчера, сервер, ссылки, настройки Minecraft.
+- `content/launcher-content.json` — новости и события истории мира.
+- `updates/metadata.json` — метаданные последней версии для проверки обновлений.
+- `updates/download.md` — страница скачивания, которую можно открыть из уведомления об обновлении.
+- `src/assets/logo-mark.png` — логотип слева.
+- `src/assets/hero-scene.png` — центральный фон.
+- `src/assets/discord.png`, `src/assets/wiki.png`, `src/assets/github.png` — иконки ссылок.
+- `ico/forgeworld_multisize.ico` — иконка приложения и установщика.
+
+Чтобы добавить событие в историю мира, добавьте новый объект в массив `timeline` внутри `content/launcher-content.json`. Чем больше событий в массиве, тем длиннее становится линия истории.
+
+## Проверка обновлений
+
+В `launcher.config.json` есть два поля:
+
+- `update.metadataUrl` — raw-ссылка на `updates/metadata.json`.
+- `update.downloadPage` — страница, которую лаунчер откроет, если в metadata нет отдельного `downloadUrl`.
+
+После публикации на GitHub файл `metadata.json` должен быть доступен по raw-ссылке. Для репозитория `iron-halo-team/forgeworld` это:
+
+```text
+https://raw.githubusercontent.com/iron-halo-team/forgeworld/main/updates/metadata.json
+```
+
+Чтобы показать игрокам уведомление, увеличьте `latestVersion` в `updates/metadata.json` выше текущего `launcherVersion` из `launcher.config.json`.
+
+## Что не коммитить
+
+В репозитории должен жить исходный код лаунчера, но не тяжёлые локальные артефакты сборки:
+
+- `node_modules/`
+- `build/`
+- `dist/`
+- `dist-electron/`
+- `release/`
+- `client/`
+- локальные моды, ресурспаки, шейдеры и готовые игровые файлы, если у них нет разрешения на публикацию
+
+Это уже отражено в `.gitignore`, чтобы проект оставался open-source, а приватные или лицензируемые игровые файлы не улетали в публичный репозиторий случайно.
+
+## Лицензия
+
+Код лаунчера распространяется под MIT. Minecraft, NeoForge, моды, ассеты и сторонние библиотеки принадлежат их авторам и распространяются на условиях соответствующих лицензий.
