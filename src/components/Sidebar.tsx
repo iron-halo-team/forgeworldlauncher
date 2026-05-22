@@ -1,22 +1,21 @@
 import logoMark from '../assets/logo-mark.png';
+import profileIcon from '../assets/Profile.png';
+import registrationIcon from '../assets/Registration.png';
+import settingsIcon from '../assets/Settings.png';
 import type {
   LauncherSettings,
   LauncherStaticConfig,
   ServerStatusPayload,
   SidebarView,
 } from '../shared/contracts';
-import { GlyphIcon } from './icons';
 
 interface SidebarProps {
   config: LauncherStaticConfig;
   settings: LauncherSettings;
   serverStatus: ServerStatusPayload | null;
   selectedView: SidebarView;
-  usernameDraft: string;
-  onUsernameDraftChange: (value: string) => void;
-  onSaveUsername: () => void;
-  onCloseLogin: () => void;
   onSelectView: (view: SidebarView) => void;
+  onOpenPlayers: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -25,17 +24,17 @@ export function Sidebar(props: SidebarProps) {
     settings,
     serverStatus,
     selectedView,
-    usernameDraft,
-    onUsernameDraftChange,
-    onSaveUsername,
-    onCloseLogin,
     onSelectView,
+    onOpenPlayers,
   } = props;
-
-  const loginLabel = settings.username.trim() || 'ВХОД';
+  const isLoggedIn = Boolean(settings.username.trim() && settings.authToken);
   const statusHeadline = serverStatus?.displayText ?? '...';
+  const hasPlayerCounts = typeof serverStatus?.playersOnline === 'number'
+    && typeof serverStatus.maxPlayers === 'number';
   const statusDetail = serverStatus?.online
-    ? `Игроков в сети: ${serverStatus.playersOnline ?? 0}/${serverStatus.maxPlayers ?? 0}`
+    ? hasPlayerCounts
+      ? `Игроков в сети: ${serverStatus.playersOnline}/${serverStatus.maxPlayers}`
+      : serverStatus.error ?? 'Сервер отвечает, онлайн уточняется...'
     : serverStatus?.error ?? 'Нет данных о состоянии сервера';
 
   return (
@@ -53,72 +52,68 @@ export function Sidebar(props: SidebarProps) {
             alt="Forge World"
           />
         </button>
+        <span className="sidebar-version">v.{config.launcherVersion}</span>
       </div>
 
       <nav className="sidebar-nav">
-        <button
-          type="button"
-          className={`nav-button ${selectedView === 'login' ? 'is-active' : ''}`}
-          onClick={() => onSelectView('login')}
-        >
-          <GlyphIcon name="user" />
-          <span>{loginLabel}</span>
-        </button>
+        {isLoggedIn ? (
+          <button
+            type="button"
+            className={`nav-button ${selectedView === 'profile' ? 'is-active' : ''}`}
+            onClick={() => onSelectView('profile')}
+          >
+            <img className="nav-button-icon" src={profileIcon} alt="" />
+            <span>{settings.username}</span>
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`nav-button ${selectedView === 'login' ? 'is-active' : ''}`}
+              onClick={() => onSelectView('login')}
+            >
+              <img className="nav-button-icon" src={profileIcon} alt="" />
+              <span>ВХОД</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-button ${selectedView === 'register' ? 'is-active' : ''}`}
+              onClick={() => onSelectView('register')}
+            >
+              <img className="nav-button-icon" src={registrationIcon} alt="" />
+              <span>РЕГИСТРАЦИЯ</span>
+            </button>
+          </>
+        )}
 
         <button
           type="button"
           className={`nav-button ${selectedView === 'settings' ? 'is-active' : ''}`}
           onClick={() => onSelectView('settings')}
         >
-          <GlyphIcon name="settings" />
+          <img className="nav-button-icon" src={settingsIcon} alt="" />
           <span>НАСТРОИКИ</span>
         </button>
       </nav>
 
       <div className="sidebar-main">
-        {selectedView === 'login' ? (
-          <section className="sidebar-card sidebar-login-card">
-            <div className="sidebar-card-head">
-              <p className="sidebar-caption">ОФФЛАЙН ВХОД</p>
-              <button
-                type="button"
-                className="sidebar-dismiss-button"
-                aria-label="Закрыть вход"
-                onClick={onCloseLogin}
-              >
-                <GlyphIcon name="close" />
-              </button>
-            </div>
-            <label className="field-label" htmlFor="username">
-              Имя игрока
-            </label>
-            <input
-              id="username"
-              className="text-input"
-              maxLength={16}
-              value={usernameDraft}
-              onChange={(event) => onUsernameDraftChange(event.target.value)}
-            />
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={onSaveUsername}
-            >
-              Сохранить
-            </button>
-            <p className="field-note">Сейчас: {settings.username}</p>
-          </section>
-        ) : (
-          <section className="sidebar-status">
-            <p className="sidebar-caption">ТЕКУЩИЙ ОНЛАЙН</p>
-            <strong className={`online-value ${serverStatus?.online ? 'is-online' : 'is-muted'}`}>
-              {statusHeadline}
-            </strong>
-            <div className="status-row">
-              <span>{statusDetail}</span>
-            </div>
-          </section>
-        )}
+        <section className="sidebar-status">
+          <p className="sidebar-caption">ТЕКУЩИЙ ОНЛАЙН</p>
+          <strong className={`online-value ${serverStatus?.online ? 'is-online' : 'is-muted'}`}>
+            {statusHeadline}
+          </strong>
+          <div className="status-row">
+            <span>{statusDetail}</span>
+          </div>
+          <button
+            type="button"
+            className="players-list-button"
+            onClick={onOpenPlayers}
+            disabled={!serverStatus?.online}
+          >
+            Игроки
+          </button>
+        </section>
       </div>
     </aside>
   );

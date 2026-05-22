@@ -1,8 +1,12 @@
 import { useEffect, useState, useTransition } from 'react';
 import discordIcon from './assets/discord.png';
+import launchMenuClosedIcon from './assets/down.png';
 import githubIcon from './assets/github.png';
+import loreBookIcon from './assets/history/book_06g.png';
 import heroScene from './assets/hero-scene.png';
+import launchMenuOpenIcon from './assets/up.png';
 import wikiIcon from './assets/wiki.png';
+import { AuthDialog } from './components/AuthDialog';
 import { NewsPanel } from './components/NewsPanel';
 import { Sidebar } from './components/Sidebar';
 import { SettingsDrawer } from './components/SettingsDrawer';
@@ -10,6 +14,8 @@ import { TimelineRail } from './components/TimelineRail';
 import { WindowControls } from './components/WindowControls';
 import { getLauncherApi } from './lib/mock-launcher';
 import type {
+  AuthServerStatusPayload,
+  LauncherAccountProfile,
   LaunchStatePayload,
   LauncherApi,
   LauncherBootstrap,
@@ -35,7 +41,10 @@ export function App() {
   const [bootstrap, setBootstrap] = useState<LauncherBootstrap | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
   const [selectedView, setSelectedView] = useState<SidebarView>('home');
-  const [usernameDraft, setUsernameDraft] = useState('');
+  const [authStatus, setAuthStatus] = useState<AuthServerStatusPayload | null>(null);
+  const [accountProfile, setAccountProfile] = useState<LauncherAccountProfile | null>(null);
+  const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false);
+  const [isPlayersPopupOpen, setIsPlayersPopupOpen] = useState(false);
   const [isBusy, startTransition] = useTransition();
   const [isLaunching, setIsLaunching] = useState(false);
 
@@ -49,7 +58,7 @@ export function App() {
         }
 
         setBootstrap(data);
-        setUsernameDraft(data.settings.username);
+        setAuthStatus(data.authStatus);
       })
       .catch((error) => {
         if (!isMounted) {
@@ -94,6 +103,30 @@ export function App() {
     };
   }, [launcher]);
 
+  useEffect(() => {
+    if (!bootstrap?.config.auth.enabled) {
+      return undefined;
+    }
+
+    let isMounted = true;
+    const refreshAuthStatus = () => {
+      void launcher.checkAuthStatus()
+        .then((status) => {
+          if (isMounted) {
+            setAuthStatus(status);
+          }
+        });
+    };
+
+    refreshAuthStatus();
+    const interval = setInterval(refreshAuthStatus, 60_000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [bootstrap?.config.auth.enabled, bootstrap?.config.auth.baseUrl, launcher]);
+
   if (!bootstrap && bootstrapError) {
     return (
       <main className="launcher-shell">
@@ -131,32 +164,74 @@ export function App() {
     launchState,
   } = bootstrap;
 
+  const applySettings = (nextSettings: LauncherSettings) => {
+    startTransition(() => {
+      setBootstrap((current) => current ? {
+        ...current,
+        settings: nextSettings,
+      } : current);
+    });
+  };
+
   const saveSettingsPatch = (patch: Partial<LauncherSettings>) => {
     return launcher.saveSettings(patch).then((nextSettings) => {
-      startTransition(() => {
-        setBootstrap((current) => current ? {
-          ...current,
-          settings: nextSettings,
-        } : current);
-      });
-
+      applySettings(nextSettings);
       return nextSettings;
     });
   };
 
-  const saveUsername = async () => {
-    const normalized = usernameDraft.trim();
-    await saveSettingsPatch({ username: normalized });
+  const loginAccount = async (username: string, password: string) => {
+    const result = await launcher.loginAccount(username.trim(), password);
+    applySettings(result.settings);
+    setAccountProfile(null);
     setSelectedView('home');
+  };
+
+  const registerAccount = async (username: string, password: string, email?: string) => {
+    const result = await launcher.registerAccount(username.trim(), password, email);
+    applySettings(result.settings);
+    setAccountProfile(null);
+    setSelectedView('home');
+  };
+
+  const logoutAccount = async () => {
+    const nextSettings = await launcher.logoutAccount();
+    applySettings(nextSettings);
+    setAccountProfile(null);
+    setSelectedView('home');
+  };
+
+  const refreshAccountProfile = async () => {
+    if (!settings.username.trim() || !settings.authToken) {
+      setAccountProfile(null);
+      return;
+    }
+
+    const result = await launcher.getAccountProfile();
+    setAccountProfile(result.profile);
+  };
+
+  const updateAccountEmail = async (email: string) => {
+    const result = await launcher.updateAccountEmail(email);
+    setAccountProfile(result.profile);
+  };
+
+  const changeAccountPassword = async (currentPassword: string, newPassword: string) => {
+    await launcher.changeAccountPassword(currentPassword, newPassword);
+  };
+
+  const recoverPassword = async (username: string) => {
+    const result = await launcher.startPasswordRecovery(username);
+    return result.message;
   };
 
   const launchGame = async () => {
     setIsLaunching(true);
 
     try {
-      if (!settings.username.trim()) {
+      if (config.auth.enabled && (!settings.username.trim() || !settings.authToken)) {
         setSelectedView('login');
-        throw new Error('Укажите имя игрока во вкладке входа.');
+        throw new Error('Войдите или зарегистрируйтесь перед запуском игры.');
       }
 
       await launcher.launchGame();
@@ -176,10 +251,12 @@ export function App() {
 
   const playDisabled = !distributionReady
     || isLaunching
-    || !settings.username.trim()
     || launchState.phase === 'launching'
     || launchState.phase === 'syncing'
     || launchState.phase === 'running';
+  const isAuthDialogOpen = selectedView === 'login'
+    || selectedView === 'register'
+    || selectedView === 'profile';
 
   return (
     <main className="launcher-shell">
@@ -190,22 +267,24 @@ export function App() {
         <WindowControls />
       </header>
 
+      <div className={`auth-status-indicator ${authStatus?.online ? 'is-online' : 'is-offline'}`}>
+        <span />
+        <strong>{authStatus?.online ? 'ONLINE' : 'OFFLINE'}</strong>
+      </div>
+
       <div className="launcher-grid">
         <Sidebar
           config={config}
           settings={settings}
           serverStatus={serverStatus}
           selectedView={selectedView}
-          usernameDraft={usernameDraft}
-          onUsernameDraftChange={setUsernameDraft}
-          onSaveUsername={() => void saveUsername()}
-          onCloseLogin={() => setSelectedView('home')}
           onSelectView={setSelectedView}
+          onOpenPlayers={() => setIsPlayersPopupOpen(true)}
         />
 
         <section className="hero-panel">
           <div className="hero-copy">
-            <span className="eyebrow">OFFLINE NEOFORGE 1.21.1</span>
+            <span className="eyebrow">Launcher</span>
             <h1>{config.branding.projectName}</h1>
             <div className="hero-divider" />
 
@@ -236,18 +315,53 @@ export function App() {
               </div>
             ) : null}
 
-            <button
-              type="button"
-              className="play-button"
-              disabled={playDisabled}
-              onClick={() => void launchGame()}
-            >
-              <span>{getPlayLabel(launchState)}</span>
-            </button>
+            <div className="play-row">
+              <button
+                type="button"
+                className="play-button"
+                disabled={playDisabled}
+                onClick={() => void launchGame()}
+              >
+                <span>{getPlayLabel(launchState)}</span>
+              </button>
 
-            <div className={`launch-status ${launchState.phase}`}>
-              {launchState.message}
+              <div className="launch-options">
+                <button
+                  type="button"
+                  className="launch-options-button"
+                  aria-label="Параметры запуска"
+                  aria-expanded={isLaunchMenuOpen}
+                  onClick={() => setIsLaunchMenuOpen((current) => !current)}
+                >
+                  <img
+                    className="launch-options-icon"
+                    src={isLaunchMenuOpen ? launchMenuOpenIcon : launchMenuClosedIcon}
+                    alt=""
+                  />
+                </button>
+                {isLaunchMenuOpen ? (
+                  <div className="launch-options-popover">
+                    <span>Прямое подключение</span>
+                    <button
+                      type="button"
+                      className={`switch-button ${settings.directConnectOnLaunch ? 'is-on' : 'is-off'}`}
+                      aria-label={settings.directConnectOnLaunch ? 'Отключить прямое подключение' : 'Включить прямое подключение'}
+                      onClick={() => void saveSettingsPatch({
+                        directConnectOnLaunch: !settings.directConnectOnLaunch,
+                      })}
+                    >
+                      <span />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
+
+            {isLaunching && (launchState.phase === 'syncing' || launchState.phase === 'launching') ? (
+              <div className={`launch-status ${launchState.phase}`}>
+                {launchState.message}
+              </div>
+            ) : null}
 
             <div className="hero-footer-bar">
               <div className="hero-socials">
@@ -282,6 +396,7 @@ export function App() {
                 className="hero-support-button"
                 onClick={() => void launcher.openExternal(config.links.wiki)}
               >
+                <img className="hero-support-icon" src={loreBookIcon} alt="" />
                 <span>Исследовать мир</span>
               </button>
             </div>
@@ -306,6 +421,40 @@ export function App() {
           onToggleCloseLauncher={(value) => void saveSettingsPatch({ closeLauncherWhenGameCloses: value })}
           onClose={() => setSelectedView('home')}
         />
+      ) : null}
+
+      {isAuthDialogOpen ? (
+        <AuthDialog
+          mode={selectedView}
+          settings={settings}
+          authStatus={authStatus}
+          accountProfile={accountProfile}
+          onLogin={loginAccount}
+          onRegister={registerAccount}
+          onLogout={logoutAccount}
+          onRefreshProfile={refreshAccountProfile}
+          onUpdateEmail={updateAccountEmail}
+          onChangePassword={changeAccountPassword}
+          onRecoverPassword={recoverPassword}
+          onClose={() => setSelectedView('home')}
+        />
+      ) : null}
+
+      {isPlayersPopupOpen ? (
+        <div className="players-popup-layer" role="presentation" onClick={() => setIsPlayersPopupOpen(false)}>
+          <section className="players-popup" role="dialog" aria-modal="true">
+            <p className="sidebar-caption">ИГРОКИ ОНЛАЙН</p>
+            {serverStatus?.players?.length ? (
+              <ul>
+                {serverStatus.players.map((playerName) => (
+                  <li key={playerName}>{playerName}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>Список игроков сейчас недоступен.</p>
+            )}
+          </section>
+        </div>
       ) : null}
 
       {isBusy ? (

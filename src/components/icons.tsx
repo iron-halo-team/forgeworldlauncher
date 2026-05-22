@@ -19,6 +19,12 @@ export type IconName =
   | 'file'
   | 'refresh'
   | 'sword'
+  | 'eye'
+  | 'eye-off'
+  | 'chevron-down'
+  | 'chevron-left'
+  | 'chevron-right'
+  | 'chevron-up'
   | 'minimize'
   | 'maximize'
   | 'close';
@@ -183,6 +189,46 @@ export function GlyphIcon({
           <path d="M12 3v8" />
           <path d="m12 11-2.8 2.8 1.8 1.8L12 14.6l1 1 1.8-1.8L12 11Z" />
           <path d="M12 15.5V21" />
+        </IconBase>
+      );
+    case 'eye':
+      return (
+        <IconBase {...props}>
+          <path d="M3.5 12s3-5.5 8.5-5.5S20.5 12 20.5 12s-3 5.5-8.5 5.5S3.5 12 3.5 12Z" />
+          <circle cx="12" cy="12" r="2.4" />
+        </IconBase>
+      );
+    case 'eye-off':
+      return (
+        <IconBase {...props}>
+          <path d="M4 4l16 16" />
+          <path d="M8.8 6.8A8.8 8.8 0 0 1 12 6.5c5.5 0 8.5 5.5 8.5 5.5a14 14 0 0 1-2.2 2.9" />
+          <path d="M14.3 14.6A2.6 2.6 0 0 1 9.4 9.7" />
+          <path d="M6.6 8.4A14 14 0 0 0 3.5 12s3 5.5 8.5 5.5a8.7 8.7 0 0 0 3.2-.6" />
+        </IconBase>
+      );
+    case 'chevron-down':
+      return (
+        <IconBase {...props}>
+          <path d="m6 9 6 6 6-6" />
+        </IconBase>
+      );
+    case 'chevron-left':
+      return (
+        <IconBase {...props}>
+          <path d="m15 6-6 6 6 6" />
+        </IconBase>
+      );
+    case 'chevron-right':
+      return (
+        <IconBase {...props}>
+          <path d="m9 6 6 6-6 6" />
+        </IconBase>
+      );
+    case 'chevron-up':
+      return (
+        <IconBase {...props}>
+          <path d="m6 15 6-6 6 6" />
         </IconBase>
       );
     case 'minimize':

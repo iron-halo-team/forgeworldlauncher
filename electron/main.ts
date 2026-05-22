@@ -14,6 +14,7 @@ import {
   shell,
 } from 'electron';
 import type {
+  AuthServerStatusPayload,
   LaunchStatePayload,
   LauncherBootstrap,
   LauncherStaticConfig,
@@ -21,10 +22,25 @@ import type {
   ServerStatusPayload,
 } from '../src/shared/contracts';
 import { IPC_CHANNELS } from '../src/shared/constants';
-import { syncBundledDistribution } from './distribution';
+import {
+  checkLauncherAuthStatus,
+  changeLauncherAccountPassword,
+  getLauncherAccountProfile,
+  loginLauncherAccount,
+  logoutLauncherAccount,
+  prepareLauncherAuthSession,
+  registerLauncherAccount,
+  startLauncherPasswordRecovery,
+  updateLauncherAccountEmail,
+} from './auth-service';
+import {
+  readDistributionManifestFrom,
+  syncBundledDistribution,
+} from './distribution';
 import { launchMinecraft } from './minecraft';
 import {
   getGameRoot,
+  getBundledDistributionDirectory,
   getLauncherLogPath,
   getSettingsPath,
   getUserDataRoot,
@@ -49,6 +65,7 @@ let launchState: LaunchStatePayload = {
 };
 let lastServerStatus: ServerStatusPayload | null = null;
 let lastUpdateInfo: LauncherUpdateInfo | null = null;
+let lastAuthStatus: AuthServerStatusPayload | null = null;
 let statusInterval: NodeJS.Timeout | null = null;
 
 function writeLog(level: 'INFO' | 'ERROR', message: string, error?: unknown) {
@@ -105,44 +122,65 @@ function setLaunchState(nextState: LaunchStatePayload) {
   broadcast(IPC_CHANNELS.launchState, nextState);
 }
 
+function withFallback<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
+  return new Promise<T>((resolve) => {
+    const timeout = setTimeout(() => {
+      resolve(fallback);
+    }, timeoutMs);
+
+    promise
+      .then(resolve)
+      .catch(() => resolve(fallback))
+      .finally(() => clearTimeout(timeout));
+  });
+}
+
 async function loadBootstrap(): Promise<LauncherBootstrap> {
   const [config, content] = await Promise.all([
     readStaticConfig(),
     readLauncherContent(),
   ]);
   const settings = await loadSettings(config);
-  const distribution = await syncBundledDistribution(config);
+  const bundledDistributionDirectory = getBundledDistributionDirectory();
+  const bundledManifest = await readDistributionManifestFrom(bundledDistributionDirectory);
+  const gameRoot = getGameRoot(config);
 
-  if (!lastServerStatus) {
-    lastServerStatus = await fetchServerStatus(config);
-  }
-
-  if (!lastUpdateInfo) {
-    lastUpdateInfo = await fetchAvailableUpdate(config);
-  }
+  writeLog(
+    'INFO',
+    bundledManifest
+      ? `Bundled distribution found in ${bundledDistributionDirectory}: ${bundledManifest.distributionVersion} (${bundledManifest.versionId})`
+      : `Bundled distribution manifest is missing in ${bundledDistributionDirectory}`,
+  );
 
   return {
     config,
     content,
     settings,
-    distributionManifest: distribution.manifest,
-    gameDirectory: distribution.gameRoot,
+    distributionManifest: bundledManifest,
+    gameDirectory: gameRoot,
     userDataDirectory: getUserDataRoot(),
-    distributionReady: distribution.ready,
+    distributionReady: Boolean(bundledManifest),
     updateInfo: lastUpdateInfo,
     serverStatus: lastServerStatus,
+    authStatus: lastAuthStatus,
     launchState,
   };
 }
 
 async function refreshStatusAndUpdates(config: LauncherStaticConfig) {
+  const fallbackServerStatus: ServerStatusPayload = {
+    online: false,
+    displayText: 'OFFLINE',
+    error: 'Не удалось получить статус сервера.',
+  };
   const [serverStatus, updateInfo] = await Promise.all([
-    fetchServerStatus(config),
-    fetchAvailableUpdate(config),
+    withFallback(fetchServerStatus(config), fallbackServerStatus, 12_000),
+    withFallback(fetchAvailableUpdate(config), null, 5000),
   ]);
 
   lastServerStatus = serverStatus;
   lastUpdateInfo = updateInfo;
+  lastAuthStatus = await checkLauncherAuthStatus(config);
 
   broadcast(IPC_CHANNELS.serverStatus, serverStatus);
   broadcast(IPC_CHANNELS.updateInfo, updateInfo);
@@ -153,10 +191,10 @@ async function startBackgroundRefresh(config: LauncherStaticConfig) {
     clearInterval(statusInterval);
   }
 
-  await refreshStatusAndUpdates(config);
+  void refreshStatusAndUpdates(config);
   statusInterval = setInterval(() => {
     void refreshStatusAndUpdates(config);
-  }, 60_000);
+  }, 10_000);
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -242,13 +280,95 @@ function createWindow() {
 async function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.bootstrap, async () => {
     const bootstrap = await loadBootstrap();
-    await startBackgroundRefresh(bootstrap.config);
+    void startBackgroundRefresh(bootstrap.config);
     return bootstrap;
   });
 
   ipcMain.handle(IPC_CHANNELS.saveSettings, async (_event, patch) => {
     const config = await readStaticConfig();
     return saveSettings(config, patch);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.loginAccount, async (_event, username: string, password: string) => {
+    const config = await readStaticConfig();
+    const result = await loginLauncherAccount(config, username.trim(), password);
+    const settings = await saveSettings(config, {
+      username: result.username,
+      authToken: result.token ?? '',
+      authTokenExpiresAt: result.expiresAt ?? '',
+    });
+
+    return {
+      ok: result.ok,
+      message: result.message,
+      settings,
+      expiresAt: result.expiresAt,
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.registerAccount, async (_event, username: string, password: string, email?: string) => {
+    const config = await readStaticConfig();
+    const result = await registerLauncherAccount(config, username.trim(), password, email);
+    const settings = await saveSettings(config, {
+      username: result.username,
+      authToken: result.token ?? '',
+      authTokenExpiresAt: result.expiresAt ?? '',
+    });
+
+    return {
+      ok: result.ok,
+      message: result.message,
+      settings,
+      expiresAt: result.expiresAt,
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.logoutAccount, async () => {
+    const config = await readStaticConfig();
+    const settings = await loadSettings(config);
+    await logoutLauncherAccount(config, settings.username, settings.authToken)
+      .catch(() => undefined);
+
+    return saveSettings(config, {
+      username: '',
+      authToken: '',
+      authTokenExpiresAt: '',
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.getAccountProfile, async () => {
+    const config = await readStaticConfig();
+    const settings = await loadSettings(config);
+    return getLauncherAccountProfile(config, settings.username, settings.authToken);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.updateAccountEmail, async (_event, email: string) => {
+    const config = await readStaticConfig();
+    const settings = await loadSettings(config);
+    return updateLauncherAccountEmail(config, settings.username, settings.authToken, email);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.changeAccountPassword, async (_event, currentPassword: string, newPassword: string) => {
+    const config = await readStaticConfig();
+    const settings = await loadSettings(config);
+    return changeLauncherAccountPassword(
+      config,
+      settings.username,
+      settings.authToken,
+      currentPassword,
+      newPassword,
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.startPasswordRecovery, async (_event, username: string) => {
+    const config = await readStaticConfig();
+    return startLauncherPasswordRecovery(config, username.trim());
+  });
+
+  ipcMain.handle(IPC_CHANNELS.checkAuthStatus, async () => {
+    const config = await readStaticConfig();
+    lastAuthStatus = await checkLauncherAuthStatus(config);
+    return lastAuthStatus;
   });
 
   ipcMain.handle(IPC_CHANNELS.launchGame, async () => {
@@ -258,6 +378,23 @@ async function registerIpcHandlers() {
 
     const config = await readStaticConfig();
     const settings = await loadSettings(config);
+
+    if (config.auth.enabled) {
+      if (!settings.username.trim() || !settings.authToken) {
+        throw new Error('Войдите в аккаунт Forge World перед запуском игры.');
+      }
+
+      setLaunchState({
+        phase: 'syncing',
+        message: 'Готовим вход на сервер...',
+      });
+
+      await prepareLauncherAuthSession(
+        config,
+        settings.username.trim(),
+        settings.authToken,
+      );
+    }
 
     setLaunchState({
       phase: 'syncing',

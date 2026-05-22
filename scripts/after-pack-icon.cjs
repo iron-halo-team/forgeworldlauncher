@@ -1,6 +1,7 @@
 const { execFile } = require('node:child_process');
 const { existsSync } = require('node:fs');
 const path = require('node:path');
+const { patchWindowsMetadata } = require('./patch-windows-metadata.cjs');
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
@@ -40,5 +41,29 @@ exports.default = async function afterPack(context) {
     executablePath,
     '--set-icon',
     iconPath,
+    '--set-version-string',
+    'FileDescription',
+    'Official Forge World launcher',
+    '--set-version-string',
+    'ProductName',
+    'Forge World Launcher',
+    '--set-version-string',
+    'CompanyName',
+    'Iron Halo team',
+    '--set-version-string',
+    'LegalCopyright',
+    'Iron Halo team',
+    '--set-version-string',
+    'OriginalFilename',
+    'Forge World Launcher.exe',
+    '--set-file-version',
+    '3.0.0',
+    '--set-product-version',
+    '3.0',
+    '--set-version-string',
+    'InternalName',
+    'Forge World Launcher',
   ]);
+
+  patchWindowsMetadata(executablePath);
 };

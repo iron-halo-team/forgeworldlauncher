@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import haimeitIcon from '../assets/history/book_06d.png';
+import coalitionWarIcon from '../assets/history/icon26.png';
+import empireFallIcon from '../assets/history/icon28.png';
+import empireIcon from '../assets/history/icon36.png';
+import greatWarIcon from '../assets/history/sword_02b.png';
 import type { LauncherContent, LauncherTimelineItem } from '../shared/contracts';
 import { useDragScroll } from '../hooks/useDragScroll';
 import { GlyphIcon, type IconName } from './icons';
@@ -15,9 +20,26 @@ interface ActiveTimelinePopover {
   y: number;
 }
 
+interface TimelineScrollState {
+  canScrollLeft: boolean;
+  canScrollRight: boolean;
+}
+
+const timelineIconById: Record<string, string> = {
+  empire: empireIcon,
+  'empire-fall': empireFallIcon,
+  liork: coalitionWarIcon,
+  haimeit: haimeitIcon,
+  'shadow-event': greatWarIcon,
+};
+
 export function TimelineRail({ content, fallbackUrl }: TimelineRailProps) {
   const railRef = useDragScroll<HTMLDivElement>();
   const [activePopover, setActivePopover] = useState<ActiveTimelinePopover | null>(null);
+  const [scrollState, setScrollState] = useState<TimelineScrollState>({
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
 
   useEffect(() => {
     const closeOnOutsideClick = (event: PointerEvent) => {
@@ -51,6 +73,50 @@ export function TimelineRail({ content, fallbackUrl }: TimelineRailProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const node = railRef.current;
+
+    if (!node) {
+      return;
+    }
+
+    let frameId = 0;
+
+    const updateScrollState = () => {
+      const maxScroll = Math.max(0, node.scrollWidth - node.clientWidth);
+      const nextState = {
+        canScrollLeft: node.scrollLeft > 2,
+        canScrollRight: node.scrollLeft < maxScroll - 2,
+      };
+
+      setScrollState((current) => (
+        current.canScrollLeft === nextState.canScrollLeft
+          && current.canScrollRight === nextState.canScrollRight
+          ? current
+          : nextState
+      ));
+    };
+
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateScrollState);
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+
+    resizeObserver.observe(node);
+    node.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    scheduleUpdate();
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+      node.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+    };
+  }, [content.timeline.length, railRef]);
+
   const openPopover = (item: LauncherTimelineItem, element: HTMLButtonElement) => {
     const rect = element.getBoundingClientRect();
     const viewportPadding = 24;
@@ -65,6 +131,20 @@ export function TimelineRail({ content, fallbackUrl }: TimelineRailProps) {
         x: Math.min(Math.max(preferredX, minX), maxX),
         y: rect.top - 10,
       });
+  };
+
+  const scrollTimelineToEdge = (direction: 'left' | 'right') => {
+    const node = railRef.current;
+
+    if (!node) {
+      return;
+    }
+
+    setActivePopover(null);
+    node.scrollTo({
+      left: direction === 'left' ? 0 : node.scrollWidth - node.clientWidth,
+      behavior: 'smooth',
+    });
   };
 
   return (
@@ -90,7 +170,15 @@ export function TimelineRail({ content, fallbackUrl }: TimelineRailProps) {
                 aria-expanded={isActive}
               >
                 <div className="timeline-emblem">
-                  <GlyphIcon name={item.icon as IconName} />
+                  {timelineIconById[item.id] ? (
+                    <img
+                      className="timeline-emblem-image"
+                      src={timelineIconById[item.id]}
+                      alt=""
+                    />
+                  ) : (
+                    <GlyphIcon name={item.icon as IconName} />
+                  )}
                 </div>
 
                 <div className="timeline-copy">
@@ -102,6 +190,28 @@ export function TimelineRail({ content, fallbackUrl }: TimelineRailProps) {
           );
         })}
       </div>
+
+      {scrollState.canScrollLeft ? (
+        <button
+          type="button"
+          className="timeline-edge-button timeline-edge-button-left"
+          aria-label="Scroll timeline to start"
+          onClick={() => scrollTimelineToEdge('left')}
+        >
+          <GlyphIcon name="chevron-left" />
+        </button>
+      ) : null}
+
+      {scrollState.canScrollRight ? (
+        <button
+          type="button"
+          className="timeline-edge-button timeline-edge-button-right"
+          aria-label="Scroll timeline to end"
+          onClick={() => scrollTimelineToEdge('right')}
+        >
+          <GlyphIcon name="chevron-right" />
+        </button>
+      ) : null}
 
       {activePopover ? createPortal(
         <div

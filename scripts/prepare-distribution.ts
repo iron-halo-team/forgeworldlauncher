@@ -410,7 +410,11 @@ async function prefetchLibraries(
     const destination = minecraftFolder.getLibraryByPath(library.download.path);
     const urls = resolveLibraryDownloadUrls(library, {
       ...downloadOptions,
-      mavenHost: ['https://repo1.maven.org/maven2'],
+      mavenHost: [
+        'https://maven.neoforged.net/releases',
+        'https://libraries.minecraft.net',
+        'https://repo1.maven.org/maven2',
+      ],
     });
 
     await withRetries(

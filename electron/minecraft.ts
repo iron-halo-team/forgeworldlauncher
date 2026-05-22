@@ -1,7 +1,10 @@
 import path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import { app, BrowserWindow } from 'electron';
-import { launch } from '@xmcl/core';
+import {
+  createQuickPlayMultiplayer,
+  launch,
+} from '@xmcl/core';
 import { getOfflineUUID, offline } from '@xmcl/user';
 import { pathExists } from 'fs-extra';
 import type {
@@ -21,6 +24,20 @@ function getBundledJavaPath(gameRoot: string) {
 function getFallbackJavaPath() {
   return process.platform === 'win32' ? 'javaw' : 'java';
 }
+
+function shouldUseSrvDirectConnect(host: string) {
+  return host.trim().toLowerCase() === 'forgeworld.joinserver.ru';
+}
+
+const DEFAULT_STABLE_JVM_ARGS = [
+  '-XX:+UnlockExperimentalVMOptions',
+  '-XX:+UseG1GC',
+  '-XX:G1NewSizePercent=20',
+  '-XX:G1ReservePercent=20',
+  '-XX:MaxGCPauseMillis=50',
+  '-XX:G1HeapRegionSize=32M',
+  '-Dfile.encoding=UTF-8',
+];
 
 export function isGameRunning() {
   return Boolean(activeProcess);
@@ -59,8 +76,16 @@ export async function launchMinecraft(options: {
     ? bundledJavaPath
     : getFallbackJavaPath();
   const canDirectConnect = config.minecraft.directConnectOnLaunch
+    && settings.directConnectOnLaunch
     && Boolean(config.minecraft.server.host)
     && !config.minecraft.server.host.includes('example');
+  const useSrvDirectConnect = canDirectConnect
+    && shouldUseSrvDirectConnect(config.minecraft.server.host);
+  const quickPlayAddress = canDirectConnect
+    ? useSrvDirectConnect
+      ? config.minecraft.server.host
+      : createQuickPlayMultiplayer(config.minecraft.server.host, config.minecraft.server.port)
+    : undefined;
 
   sendState({
     phase: 'launching',
@@ -82,15 +107,9 @@ export async function launchMinecraft(options: {
     gameProfile: auth.selectedProfile,
     accessToken: auth.accessToken,
     userType: 'legacy',
-    extraJVMArgs: [
-      '-Dfile.encoding=UTF-8',
-      '-XX:+UseG1GC',
-      '-XX:+UnlockExperimentalVMOptions',
-      '-XX:G1NewSizePercent=20',
-      '-XX:G1ReservePercent=20',
-      '-XX:MaxGCPauseMillis=50',
-    ],
-    server: canDirectConnect
+    extraJVMArgs: DEFAULT_STABLE_JVM_ARGS,
+    quickPlayMultiplayer: quickPlayAddress,
+    server: canDirectConnect && !useSrvDirectConnect
       ? {
         ip: config.minecraft.server.host,
         port: config.minecraft.server.port,
@@ -98,6 +117,7 @@ export async function launchMinecraft(options: {
       : undefined,
     extraExecOption: {
       cwd: gameRoot,
+      stdio: 'ignore',
       windowsHide: false,
     },
   });

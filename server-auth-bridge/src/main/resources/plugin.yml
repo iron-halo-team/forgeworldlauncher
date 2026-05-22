@@ -1,0 +1,8 @@
+name: ForgeWorldAuthBridge
+version: 2.1.0
+main: com.forgeworld.authbridge.ForgeWorldAuthBridgePlugin
+api-version: '1.21'
+depend:
+  - AuthMe
+author: Iron Halo team
+description: Account bridge between Forge World Launcher and AuthMe with direct HTTP and web relay modes.

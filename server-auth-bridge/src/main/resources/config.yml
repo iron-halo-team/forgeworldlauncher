@@ -1,0 +1,44 @@
+# ForgeWorldAuthBridge
+#
+# Direct HTTP API for launcher registration, login and AuthMe auto-login.
+# The launcher does not need MySQL, RCON, SFTP or a separate web hosting relay.
+# Use one public TCP port from your Minecraft hosting panel.
+
+http:
+  enabled: true
+  bind-host: "0.0.0.0"
+  port: 25797
+  public-base-url: "http://f10.joinserver.xyz:25797"
+  trust-proxy-headers: false
+  cors-origin: "*"
+
+relay:
+  enabled: false
+  base-url: ""
+  shared-secret: ""
+  request-timeout-millis: 8000
+  poll-interval-ticks: 40
+  initial-delay-ticks: 40
+  warning-throttle-seconds: 60
+
+security:
+  launch-session-minutes: 15
+  remember-days: 30
+  max-body-bytes: 4096
+  rate-limit-window-seconds: 60
+  rate-limit-max-attempts: 8
+
+username:
+  regex: "^[A-Za-z0-9_]{3,16}$"
+
+password:
+  min-length: 6
+  max-length: 128
+
+auto-login:
+  enabled: true
+  delay-ticks: 10
+  require-ip-match: false
+
+logging:
+  log-successes: false

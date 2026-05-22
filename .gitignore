@@ -6,6 +6,7 @@ build/
 dist/
 dist-electron/
 release/
+pack/offline-distribution/
 
 # Local imported client and local pack content
 client/
@@ -22,6 +23,16 @@ distribution-source/optionsof.txt
 *.cache
 build/.installer-cache/
 build/.distribution-workdir/
+
+# Local third-party server jars and bridge build output
+aditional/
+server-auth-bridge/build/
+server-auth-bridge/lib/
+server-auth-bridge/*.jar
+server-auth-bridge/**/sessions.yml
+web-auth-relay/forgeworld-auth/data/*.json
+web-auth-relay/forgeworld-auth/data/*.lock
+web-auth-relay/forgeworld-auth/config.local.php
 
 # Logs and local diagnostics
 *.log

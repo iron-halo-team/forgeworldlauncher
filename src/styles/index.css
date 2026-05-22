@@ -153,11 +153,12 @@ button {
 }
 
 .sidebar-brand {
-  display: grid;
-  justify-items: center;
-  gap: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
   min-width: 0;
-  padding-bottom: 12px;
+  padding: 2px 6px 12px;
   border-bottom: 1px solid rgba(90, 97, 107, 0.18);
 }
 
@@ -165,7 +166,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  justify-self: center;
+  flex: 0 0 auto;
   padding: 0;
   border: 0;
   background: transparent;
@@ -173,9 +174,20 @@ button {
 }
 
 .sidebar-logo {
-  width: 76px;
-  height: 76px;
+  width: 64px;
+  height: 64px;
   filter: drop-shadow(0 8px 30px rgba(0, 0, 0, 0.4));
+}
+
+.sidebar-version {
+  min-width: 0;
+  font-family: 'Minecraft Title', 'Minecraft UI', sans-serif;
+  font-size: clamp(1.02rem, 1.04vw, 1.24rem);
+  line-height: 1;
+  letter-spacing: 0.035em;
+  color: rgba(231, 235, 241, 0.86);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.42);
+  white-space: nowrap;
 }
 
 .sidebar-brand-text {
@@ -210,10 +222,10 @@ button {
 .support-button {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
   min-width: 0;
   min-height: 44px;
-  padding: 0 16px;
+  padding: 0 11px;
   border: 1px solid rgba(111, 118, 130, 0.16);
   background: rgba(255, 255, 255, 0.01);
   color: #c8ced8;
@@ -227,10 +239,16 @@ button {
 
 .nav-button span {
   min-width: 0;
-  font-size: 0.9rem;
+  font-size: clamp(0.6rem, 0.68vw, 0.72rem);
+  letter-spacing: 0.012em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.nav-button-compact span {
+  font-size: clamp(0.78rem, 0.95vw, 0.9rem);
+  letter-spacing: 0.02em;
 }
 
 .nav-button svg,
@@ -239,6 +257,14 @@ button {
 .support-button svg {
   width: 18px;
   height: 18px;
+}
+
+.nav-button-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 
 .nav-button:hover,
@@ -266,6 +292,34 @@ button {
   padding: 14px 13px;
   border: 1px solid rgba(90, 97, 107, 0.16);
   background: rgba(255, 255, 255, 0.015);
+}
+
+.players-list-button {
+  justify-self: start;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(220, 132, 127, 0.24);
+  background: rgba(187, 95, 91, 0.045);
+  color: #cbd1db;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.players-list-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(220, 132, 127, 0.46);
+  color: #fff1ef;
+  background: rgba(187, 95, 91, 0.09);
+}
+
+.players-list-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .sidebar-login-card {
@@ -342,6 +396,105 @@ button {
   box-shadow: 0 0 0 4px rgba(187, 95, 91, 0.08);
 }
 
+.password-field {
+  position: relative;
+  min-width: 0;
+}
+
+.password-field .text-input {
+  padding-right: 48px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(188, 197, 209, 0.62);
+  transform: translateY(-50%);
+  transition:
+    transform 140ms ease,
+    color 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.password-toggle svg {
+  width: 17px;
+  height: 17px;
+}
+
+.password-toggle:hover {
+  color: #f2f4f8;
+  border-color: rgba(220, 132, 127, 0.24);
+  background: rgba(187, 95, 91, 0.06);
+  transform: translateY(-50%) scale(0.96);
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.field-label-row .field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-label-row .field-label span {
+  color: #77818f;
+  font-size: 0.72em;
+}
+
+.tooltip-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(111, 118, 130, 0.22);
+  color: #8f98a6;
+  outline: none;
+}
+
+.tooltip-anchor::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 4;
+  width: min(290px, 74vw);
+  padding: 9px 10px;
+  border: 1px solid rgba(220, 132, 127, 0.28);
+  background: rgba(8, 12, 17, 0.98);
+  color: #c5ccd6;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.tooltip-anchor:hover::after,
+.tooltip-anchor:focus::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .ghost-button {
   justify-content: center;
 }
@@ -405,23 +558,31 @@ button {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   gap: 12px;
-  padding: 38px 32px 20px;
-  width: min(100%, 560px);
-  max-width: 560px;
+  padding: 44px 52px 96px;
+  width: 100%;
+  max-width: none;
   height: 100%;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  text-align: center;
 }
 
 .hero-copy h1 {
   margin: 0;
   font-family: 'Minecraft Title', sans-serif;
-  font-size: clamp(2.5rem, 4.2vw, 4.8rem);
+  font-size: clamp(4.2rem, 6vw, 7rem);
   line-height: 0.94;
   letter-spacing: 0.06em;
   color: #f3f5f8;
+}
+
+.hero-copy > .eyebrow {
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  opacity: 0.46;
 }
 
 .hero-divider {
@@ -449,6 +610,7 @@ button {
   max-width: 430px;
   color: #cbd1db;
   font-size: 1rem;
+  justify-items: center;
 }
 
 .hero-subtitle p {
@@ -461,20 +623,114 @@ button {
   align-items: center;
   justify-content: center;
   width: fit-content;
-  min-width: 250px;
+  min-width: 286px;
   min-height: 68px;
-  padding: 0 32px;
+  padding: 0 34px;
   border: 1px solid rgba(220, 132, 127, 0.58);
   background: linear-gradient(180deg, rgba(187, 95, 91, 0.18), rgba(187, 95, 91, 0.08));
   color: var(--accent-bright);
   font-family: 'Minecraft UI', sans-serif;
-  font-size: 1.24rem;
+  font-size: 1.22rem;
   letter-spacing: 0.14em;
 }
 
-.play-button svg {
-  width: 26px;
-  height: 26px;
+.play-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.launch-options {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.launch-options-button {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  min-height: 68px;
+  border: 1px solid rgba(220, 132, 127, 0.36);
+  background: rgba(187, 95, 91, 0.05);
+  color: var(--accent-bright);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.launch-options-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(220, 132, 127, 0.55);
+  background: rgba(187, 95, 91, 0.1);
+}
+
+.launch-options-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.launch-options-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.launch-options-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 210px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 1px solid rgba(111, 118, 130, 0.2);
+  background: rgba(7, 10, 14, 0.98);
+  box-shadow: var(--shadow);
+  color: #d9dee7;
+  font-size: 0.78rem;
+}
+
+.switch-button {
+  position: relative;
+  width: 46px;
+  height: 24px;
+  border: 1px solid rgba(111, 118, 130, 0.24);
+  background: rgba(111, 118, 130, 0.14);
+  padding: 0;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.switch-button span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #87909c;
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.switch-button.is-on {
+  border-color: rgba(119, 201, 137, 0.48);
+  background: rgba(119, 201, 137, 0.16);
+}
+
+.switch-button.is-on span {
+  transform: translateX(21px);
+  background: #77c989;
 }
 
 .play-button:disabled {
@@ -486,11 +742,17 @@ button {
   max-width: 480px;
   min-height: 22px;
   color: #98a0ac;
-  font-size: 0.96rem;
+  font-size: 0.72rem;
+  opacity: 0.58;
+  text-align: center;
 }
 
 .hero-footer-bar {
-  margin-top: auto;
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  bottom: 20px;
+  margin-top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -533,6 +795,11 @@ button {
     transform 120ms ease,
     filter 120ms ease,
     opacity 120ms ease;
+}
+
+.hero-support-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .hero-social-button:hover,
@@ -732,6 +999,13 @@ button {
   height: 24px;
 }
 
+.timeline-emblem-image {
+  width: 23px;
+  height: 23px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 .news-copy {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -825,7 +1099,7 @@ button {
   gap: 36px;
   overflow-x: auto;
   overflow-y: visible;
-  padding: 6px 0 2px;
+  padding: 6px 34px 2px;
   scrollbar-width: none;
   cursor: grab;
   user-select: none;
@@ -837,6 +1111,49 @@ button {
 
 .timeline-track.is-dragging {
   cursor: grabbing;
+}
+
+.timeline-edge-button {
+  position: absolute;
+  top: 50%;
+  z-index: 8;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 68px;
+  padding: 0;
+  border: 1px solid rgba(220, 132, 127, 0.16);
+  background: rgba(7, 10, 14, 0.48);
+  color: rgba(238, 241, 245, 0.58);
+  opacity: 0.72;
+  transform: translateY(-50%);
+  transition:
+    opacity 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.timeline-edge-button:hover {
+  border-color: rgba(220, 132, 127, 0.38);
+  background: rgba(187, 95, 91, 0.08);
+  color: #fff1ef;
+  opacity: 1;
+}
+
+.timeline-edge-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.timeline-edge-button-left {
+  left: 7px;
+  animation: timeline-edge-nudge-left 10s ease-in-out infinite;
+}
+
+.timeline-edge-button-right {
+  right: 7px;
+  animation: timeline-edge-nudge-right 10s ease-in-out infinite;
 }
 
 .timeline-card {
@@ -916,6 +1233,11 @@ button {
 .timeline-emblem svg {
   width: 14px;
   height: 14px;
+}
+
+.timeline-emblem-image {
+  width: 18px;
+  height: 18px;
 }
 
 .timeline-trigger:hover .timeline-emblem,
@@ -1006,6 +1328,44 @@ button {
   border-color: rgba(220, 132, 127, 0.42);
   background: rgba(187, 95, 91, 0.12);
   color: #fff1ef;
+}
+
+@keyframes timeline-edge-nudge-left {
+  0%,
+  88%,
+  100% {
+    transform: translateY(-50%) translateX(0);
+    opacity: 0.72;
+  }
+
+  91% {
+    transform: translateY(-50%) translateX(-4px);
+    opacity: 0.95;
+  }
+
+  94% {
+    transform: translateY(-50%) translateX(0);
+    opacity: 0.72;
+  }
+}
+
+@keyframes timeline-edge-nudge-right {
+  0%,
+  88%,
+  100% {
+    transform: translateY(-50%) translateX(0);
+    opacity: 0.72;
+  }
+
+  91% {
+    transform: translateY(-50%) translateX(4px);
+    opacity: 0.95;
+  }
+
+  94% {
+    transform: translateY(-50%) translateX(0);
+    opacity: 0.72;
+  }
 }
 
 .settings-overlay {
@@ -1141,17 +1501,245 @@ button {
   color: #e8ebf1;
 }
 
+.players-popup-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 4, 7, 0.36);
+}
+
+.players-popup {
+  width: min(360px, calc(100vw - 48px));
+  max-height: min(420px, calc(100vh - 96px));
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(111, 118, 130, 0.22);
+  background: rgba(7, 10, 14, 0.96);
+  box-shadow: var(--shadow);
+}
+
+.players-popup ul {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.players-popup li {
+  padding: 8px 10px;
+  border: 1px solid rgba(111, 118, 130, 0.14);
+  background: rgba(255, 255, 255, 0.018);
+  color: #e8ebf1;
+}
+
+.players-popup p {
+  margin: 12px 0 0;
+  color: #aab2bf;
+}
+
+.auth-status-indicator {
+  position: fixed;
+  top: calc(var(--shell-pad) + 9px);
+  left: calc(var(--shell-pad) + 14px);
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(111, 118, 130, 0.16);
+  background: rgba(7, 10, 14, 0.58);
+  color: #87909c;
+  pointer-events: none;
+  opacity: 0.78;
+}
+
+.auth-status-indicator span,
+.auth-network-note span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7f8894;
+  box-shadow: 0 0 14px rgba(127, 136, 148, 0.3);
+}
+
+.auth-status-indicator strong {
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+}
+
+.auth-status-indicator.is-online span,
+.auth-network-note.is-online span {
+  background: #77c989;
+  box-shadow: 0 0 14px rgba(119, 201, 137, 0.35);
+}
+
+.auth-status-indicator.is-offline span,
+.auth-network-note.is-offline span {
+  background: #dc847f;
+  box-shadow: 0 0 14px rgba(220, 132, 127, 0.36);
+}
+
+.auth-dialog {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 18px;
+  max-height: calc(100vh - 80px);
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 22px 24px;
+  border: 1px solid rgba(111, 118, 130, 0.2);
+  background:
+    linear-gradient(180deg, rgba(10, 14, 20, 0.995), rgba(6, 9, 14, 0.995)),
+    radial-gradient(circle at top right, rgba(187, 95, 91, 0.14), transparent 34%);
+  box-shadow: var(--shadow);
+}
+
+.auth-network-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(111, 118, 130, 0.14);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.auth-network-note p {
+  margin: 0;
+  color: #aab2bf;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.auth-form-card,
+.auth-profile-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.captcha-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(111, 118, 130, 0.14);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.captcha-card p {
+  margin: 4px 0 0;
+  color: #c5ccd6;
+  line-height: 1.35;
+}
+
+.captcha-card .sidebar-caption {
+  margin: 0;
+  color: #87909c;
+}
+
+.captcha-refresh {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-color: rgba(111, 118, 130, 0.14);
+}
+
+.auth-profile-card {
+  padding-top: 4px;
+}
+
+.profile-info-grid,
+.profile-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(111, 118, 130, 0.14);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.profile-info-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.auth-profile-card strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.5rem;
+  letter-spacing: 0.08em;
+  color: #f3f5f8;
+  overflow-wrap: anywhere;
+}
+
+.auth-profile-card span {
+  display: block;
+  margin-top: 4px;
+  color: #c5ccd6;
+}
+
+.auth-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 132, 127, 0.32);
+  background: rgba(187, 95, 91, 0.08);
+  color: #ffbbb6;
+  line-height: 1.35;
+}
+
+.auth-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(119, 201, 137, 0.28);
+  background: rgba(119, 201, 137, 0.08);
+  color: #c7f2d0;
+  line-height: 1.35;
+}
+
+.auth-inline-button {
+  justify-self: end;
+  margin-top: -6px;
+  border: 0;
+  background: transparent;
+  color: rgba(170, 178, 191, 0.72);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  transition:
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+.auth-inline-button:hover {
+  color: var(--accent-bright);
+}
+
+.auth-submit-button,
+.auth-danger-button {
+  min-height: 48px;
+}
+
+.auth-danger-button {
+  color: #ffaaa4;
+}
+
 @media (max-width: 1500px) {
   .launcher-grid {
     grid-template-columns: 214px minmax(0, 1fr) 364px;
   }
 
   .hero-copy {
-    padding: 34px 26px 18px;
+    padding: 34px 42px 90px;
   }
 
   .hero-copy h1 {
-    font-size: clamp(2.2rem, 3.8vw, 4rem);
+    font-size: clamp(3.8rem, 5.2vw, 6rem);
   }
 
   .hero-subtitle {
@@ -1159,8 +1747,13 @@ button {
   }
 
   .play-button {
-    min-height: 58px;
-    font-size: 1.08rem;
+    min-height: 64px;
+    min-width: 272px;
+    font-size: 1.12rem;
+  }
+
+  .launch-options-button {
+    min-height: 64px;
   }
 
   .hero-art img {
@@ -1174,11 +1767,11 @@ button {
   }
 
   .hero-copy {
-    padding: 26px 22px 16px;
+    padding: 28px 34px 88px;
   }
 
   .hero-copy h1 {
-    font-size: clamp(2rem, 3.4vw, 3.5rem);
+    font-size: clamp(3.25rem, 4.7vw, 4.8rem);
   }
 
   .hero-subtitle {
@@ -1233,12 +1826,12 @@ button {
 
 @media (max-height: 760px) {
   .hero-copy {
-    padding: 24px 20px 14px;
+    padding: 24px 28px 82px;
     gap: 8px;
   }
 
   .hero-copy h1 {
-    font-size: clamp(1.8rem, 3vw, 3rem);
+    font-size: clamp(2.9rem, 4.4vw, 4.4rem);
   }
 
   .hero-subtitle {
@@ -1246,9 +1839,14 @@ button {
   }
 
   .play-button {
-    min-height: 54px;
-    padding: 0 20px;
-    font-size: 0.96rem;
+    min-height: 52px;
+    min-width: 250px;
+    padding: 0 24px;
+    font-size: 0.94rem;
+  }
+
+  .launch-options-button {
+    min-height: 52px;
   }
 
   .timeline-section {

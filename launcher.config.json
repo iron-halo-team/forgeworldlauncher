@@ -1,7 +1,7 @@
 {
   "appId": "forge-world-launcher",
   "launcherVersion": "3.0",
-  "distributionVersion": "3.0",
+  "distributionVersion": "3.0.3",
   "branding": {
     "projectName": "FORGE WORLD",
     "subtitle": [
@@ -20,7 +20,7 @@
     "minimumLaunchRamMb": 2048,
     "directConnectOnLaunch": true,
     "server": {
-      "host": "f10.joinserver.xyz",
+      "host": "forgeworld.joinserver.ru",
       "port": 25684,
       "displayName": "Forge World"
     }
@@ -35,10 +35,16 @@
     "metadataUrl": "https://raw.githubusercontent.com/iron-halo-team/forgeworld/main/updates/metadata.json",
     "downloadPage": "https://github.com/iron-halo-team/forgeworld/blob/main/updates/download.md"
   },
+  "auth": {
+    "enabled": true,
+    "baseUrl": "http://f10.joinserver.xyz:25797",
+    "fallbackBaseUrl": "http://95.217.53.168:25797",
+    "hostHeader": "",
+    "requestTimeoutMs": 30000
+  },
   "preserveOnUpdate": [
     "options.txt",
     "optionsof.txt",
-    "servers.dat",
     "saves",
     "screenshots",
     "resourcepacks",

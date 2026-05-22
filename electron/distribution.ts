@@ -41,6 +41,18 @@ async function restorePreservedFiles(
   }
 }
 
+async function copyBundledServerList(
+  bundledDirectory: string,
+  targetDirectory: string,
+) {
+  const source = path.join(bundledDirectory, 'servers.dat');
+  if (!await pathExists(source) || !await pathExists(targetDirectory)) {
+    return;
+  }
+
+  await copy(source, path.join(targetDirectory, 'servers.dat'), { overwrite: true });
+}
+
 export async function syncBundledDistribution(config: LauncherStaticConfig) {
   const bundledDirectory = getBundledDistributionDirectory();
   const gameRoot = getGameRoot(config);
@@ -89,6 +101,8 @@ export async function syncBundledDistribution(config: LauncherStaticConfig) {
       await copy(bundledDirectory, gameRoot, { overwrite: true });
     }
   }
+
+  await copyBundledServerList(bundledDirectory, gameRoot);
 
   return {
     ready: true,

@@ -47,6 +47,13 @@ const staticConfigSchema = z.object({
     metadataUrl: z.string().url(),
     downloadPage: z.string().url(),
   }),
+  auth: z.object({
+    enabled: z.boolean(),
+    baseUrl: z.union([z.string().url(), z.literal('')]),
+    fallbackBaseUrl: z.union([z.string().url(), z.literal('')]).optional(),
+    hostHeader: z.string().optional(),
+    requestTimeoutMs: z.number().int().positive(),
+  }),
   preserveOnUpdate: z.array(z.string()),
 });
 

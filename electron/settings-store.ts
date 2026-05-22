@@ -8,17 +8,23 @@ import { getSettingsPath, getUserDataRoot } from './paths';
 
 const settingsPatchSchema = z.object({
   username: z.string().trim().regex(/^$|^[A-Za-z0-9_]{3,16}$/).optional(),
+  authToken: z.string().optional(),
+  authTokenExpiresAt: z.string().optional(),
   allocatedRamMb: z.number().int().min(1024).max(65536).optional(),
   hideLauncherOnGameStart: z.boolean().optional(),
   closeLauncherWhenGameCloses: z.boolean().optional(),
+  directConnectOnLaunch: z.boolean().optional(),
 });
 
 function getDefaultSettings(config: LauncherStaticConfig): LauncherSettings {
   return {
     username: '',
+    authToken: '',
+    authTokenExpiresAt: '',
     allocatedRamMb: config.minecraft.defaultRamMb,
     hideLauncherOnGameStart: true,
     closeLauncherWhenGameCloses: false,
+    directConnectOnLaunch: config.minecraft.directConnectOnLaunch,
   };
 }
 

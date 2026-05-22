@@ -1,0 +1,17 @@
+{
+  "DO_NOT_CHANGE_IT": 2,
+  "selectedModpack": "f10.joinserver.xyz-25684",
+  "installedModpacks": {
+    "f10.joinserver.xyz-25684": {
+      "hostAddress": "f10.joinserver.xyz:25684",
+      "serverAddress": "f10.joinserver.xyz:25684",
+      "requiresMagic": true
+    }
+  },
+  "updateSelectedModpackOnLaunch": true,
+  "selfUpdater": false,
+  "syncAutoModpackVersion": true,
+  "syncLoaderVersion": true,
+  "playMusic": true,
+  "allowRemoteNonModpackDeletions": true
+}

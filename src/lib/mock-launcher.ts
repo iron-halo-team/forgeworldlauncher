@@ -47,6 +47,11 @@ const mockConfig = {
     metadataUrl: 'https://example.com/forge-world/update.json',
     downloadPage: 'https://example.com/forge-world/download',
   },
+  auth: {
+    enabled: true,
+    baseUrl: 'http://hm507391.webhm.pro/forgeworld-auth',
+    requestTimeoutMs: 30000,
+  },
   preserveOnUpdate: ['options.txt'],
 };
 
@@ -126,9 +131,12 @@ const mockContent = {
 
 let mockSettings: LauncherSettings = {
   username: '',
+  authToken: '',
+  authTokenExpiresAt: '',
   allocatedRamMb: 6144,
   hideLauncherOnGameStart: true,
   closeLauncherWhenGameCloses: false,
+  directConnectOnLaunch: true,
 };
 
 let launchState = {
@@ -142,6 +150,7 @@ let serverStatus: ServerStatusPayload = {
   playersOnline: 1346,
   maxPlayers: 2500,
   latencyMs: 24,
+  players: ['IronWanderer', 'Runesmith', 'NorthGuard'],
 };
 
 let updateInfo: LauncherUpdateInfo | null = {
@@ -188,6 +197,11 @@ export function getLauncherApi(): LauncherApi {
         distributionReady: true,
         updateInfo,
         serverStatus,
+        authStatus: {
+          online: true,
+          message: 'Сервер авторизации доступен.',
+          checkedAt: new Date().toISOString(),
+        },
         launchState,
       };
     },
@@ -197,6 +211,87 @@ export function getLauncherApi(): LauncherApi {
         ...patch,
       };
       return mockSettings;
+    },
+    async loginAccount(username) {
+      mockSettings = {
+        ...mockSettings,
+        username,
+        authToken: 'preview-token',
+        authTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      };
+      return {
+        ok: true,
+        message: 'Вход выполнен.',
+        settings: mockSettings,
+        expiresAt: mockSettings.authTokenExpiresAt,
+      };
+    },
+    async registerAccount(username) {
+      mockSettings = {
+        ...mockSettings,
+        username,
+        authToken: 'preview-token',
+        authTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      };
+      return {
+        ok: true,
+        message: 'Регистрация выполнена.',
+        settings: mockSettings,
+        expiresAt: mockSettings.authTokenExpiresAt,
+      };
+    },
+    async logoutAccount() {
+      mockSettings = {
+        ...mockSettings,
+        username: '',
+        authToken: '',
+        authTokenExpiresAt: '',
+      };
+      return mockSettings;
+    },
+    async getAccountProfile() {
+      return {
+        ok: true,
+        message: 'Профиль загружен.',
+        profile: {
+          username: mockSettings.username,
+          email: '',
+          hasEmail: false,
+          lastLoginAt: new Date().toISOString(),
+        },
+      };
+    },
+    async updateAccountEmail(email) {
+      return {
+        ok: true,
+        message: 'Почта обновлена.',
+        profile: {
+          username: mockSettings.username,
+          email,
+          hasEmail: true,
+          lastLoginAt: new Date().toISOString(),
+        },
+      };
+    },
+    async changeAccountPassword() {
+      return {
+        ok: true,
+        message: 'Пароль изменен.',
+      };
+    },
+    async startPasswordRecovery() {
+      return {
+        ok: false,
+        message: 'К аккаунту не привязана почта. Для восстановления пароля обратитесь к администрации сервера.',
+        hasEmail: false,
+      };
+    },
+    async checkAuthStatus() {
+      return {
+        online: true,
+        message: 'Сервер авторизации доступен.',
+        checkedAt: new Date().toISOString(),
+      };
     },
     async launchGame() {
       launchState = {

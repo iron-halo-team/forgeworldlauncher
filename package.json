@@ -1,9 +1,9 @@
 {
   "name": "forge-world-launcher",
-  "version": "1.2.0",
-  "description": "Offline-first Minecraft launcher for a single bundled NeoForge 1.21.1 server build.",
+  "version": "3.0.0",
+  "description": "Official Forge World launcher",
   "main": "dist-electron/electron/main.js",
-  "author": "OpenAI Codex",
+  "author": "Iron Halo team",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -54,6 +54,7 @@
   "build": {
     "appId": "com.forgeworld.launcher",
     "productName": "Forge World Launcher",
+    "copyright": "Iron Halo team",
     "directories": {
       "output": "release"
     },
@@ -61,13 +62,14 @@
       "dist/**/*",
       "dist-electron/**/*",
       "content/**/*",
+      "updates/**/*",
       "ico/**/*",
       "launcher.config.json",
       "package.json"
     ],
     "extraResources": [
       {
-        "from": "build/offline-distribution",
+        "from": "pack/offline-distribution",
         "to": "offline-distribution",
         "filter": [
           "**/*"
@@ -82,13 +84,24 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "Forge-World-Launcher-${version}.${ext}"
+      "artifactName": "Forge-World-Launcher-3.0.${ext}"
     },
     "nsis": {
+      "language": "1049",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iron-halo-team/forgeworld.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/iron-halo-team/forgeworld/issues"
+  },
+  "homepage": "https://github.com/iron-halo-team/forgeworld#readme"
 }

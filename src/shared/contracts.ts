@@ -1,4 +1,4 @@
-export type SidebarView = 'home' | 'settings' | 'login';
+export type SidebarView = 'home' | 'settings' | 'login' | 'register' | 'profile';
 
 export interface LauncherStaticConfig {
   appId: string;
@@ -37,6 +37,13 @@ export interface LauncherStaticConfig {
     metadataUrl: string;
     downloadPage: string;
   };
+  auth: {
+    enabled: boolean;
+    baseUrl: string;
+    fallbackBaseUrl?: string;
+    hostHeader?: string;
+    requestTimeoutMs: number;
+  };
   preserveOnUpdate: string[];
 }
 
@@ -68,9 +75,38 @@ export interface LauncherContent {
 
 export interface LauncherSettings {
   username: string;
+  authToken: string;
+  authTokenExpiresAt: string;
   allocatedRamMb: number;
   hideLauncherOnGameStart: boolean;
   closeLauncherWhenGameCloses: boolean;
+  directConnectOnLaunch: boolean;
+}
+
+export interface AuthServerStatusPayload {
+  online: boolean;
+  message: string;
+  checkedAt: string;
+}
+
+export interface LauncherAuthResult {
+  ok: boolean;
+  message: string;
+  settings: LauncherSettings;
+  expiresAt?: string;
+}
+
+export interface LauncherAccountProfile {
+  username: string;
+  email: string;
+  hasEmail: boolean;
+  lastLoginAt: string;
+}
+
+export interface LauncherAccountProfileResult {
+  ok: boolean;
+  message: string;
+  profile: LauncherAccountProfile;
 }
 
 export interface DistributionManifest {
@@ -101,6 +137,7 @@ export interface ServerStatusPayload {
   playersOnline?: number;
   maxPlayers?: number;
   latencyMs?: number;
+  players?: string[];
   error?: string;
 }
 
@@ -114,12 +151,21 @@ export interface LauncherBootstrap {
   distributionReady: boolean;
   updateInfo: LauncherUpdateInfo | null;
   serverStatus: ServerStatusPayload | null;
+  authStatus: AuthServerStatusPayload | null;
   launchState: LaunchStatePayload;
 }
 
 export interface LauncherApi {
   getBootstrap(): Promise<LauncherBootstrap>;
   saveSettings(patch: Partial<LauncherSettings>): Promise<LauncherSettings>;
+  loginAccount(username: string, password: string): Promise<LauncherAuthResult>;
+  registerAccount(username: string, password: string, email?: string): Promise<LauncherAuthResult>;
+  logoutAccount(): Promise<LauncherSettings>;
+  getAccountProfile(): Promise<LauncherAccountProfileResult>;
+  updateAccountEmail(email: string): Promise<LauncherAccountProfileResult>;
+  changeAccountPassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean; message: string }>;
+  startPasswordRecovery(username: string): Promise<{ ok: boolean; message: string; hasEmail?: boolean }>;
+  checkAuthStatus(): Promise<AuthServerStatusPayload>;
   launchGame(): Promise<void>;
   minimizeWindow(): Promise<void>;
   toggleMaximizeWindow(): Promise<void>;
