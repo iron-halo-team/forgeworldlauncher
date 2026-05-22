@@ -16,6 +16,7 @@ distribution-source/shaderpacks/
 distribution-source/servers.dat
 distribution-source/options.txt
 distribution-source/optionsof.txt
+distribution-source/automodpack
 
 # Runtime / caches
 .tmp/
