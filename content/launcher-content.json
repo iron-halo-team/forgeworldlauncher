@@ -3,6 +3,13 @@
   "timelineTitle": "ЛЕТОПИСЬ МИРА",
   "timelineSubtitle": "Исторические события",
   "news": [
+    {
+      "id": "newtest3",
+      "title": "Тестовая новость 3",
+      "date": "23.05.2026",
+      "text": "Новый мир уже тут. Сервер стартует заново в обновлении 3.0, с новым лаунчером",
+      "url": "https://github.com/iron-halo-team/forgeworld/wiki"
+    },
       {
       "id": "newtest",
       "title": "Тестовая новость 2",
