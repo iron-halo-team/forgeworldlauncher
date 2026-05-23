@@ -4,6 +4,14 @@
   "timelineSubtitle": "Исторические события",
   "news": [
     {
+      "id": "update-3-0",
+      "title": "Обновление 3.0",
+      "date": "23.05.2026",
+      "text": "Новый мир уже тут. Сервер стартует заново в обновлении 3.0, с новым лаунчером",
+      "icon": "helm",
+      "url": "https://github.com/iron-halo-team/forgeworld/wiki"
+    },
+    {
       "id": "shadow-event",
       "title": "Развитие лора",
       "date": "16.05.2026",
