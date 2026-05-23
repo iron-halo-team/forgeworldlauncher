@@ -19,6 +19,7 @@ const launcherApi: LauncherApi = {
   closeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.closeWindow),
   openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.openExternal, url),
   openGameFolder: () => ipcRenderer.invoke(IPC_CHANNELS.openGameFolder),
+  openModsFolder: () => ipcRenderer.invoke(IPC_CHANNELS.openModsFolder),
   openLauncherDataFolder: () => ipcRenderer.invoke(IPC_CHANNELS.openLauncherDataFolder),
   openSettingsFile: () => ipcRenderer.invoke(IPC_CHANNELS.openSettingsFile),
   refreshServerStatus: () => ipcRenderer.invoke(IPC_CHANNELS.refreshServerStatus),
@@ -43,6 +44,13 @@ const launcherApi: LauncherApi = {
     };
     ipcRenderer.on(IPC_CHANNELS.updateInfo, wrapped);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.updateInfo, wrapped);
+  },
+  onContentUpdate: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof listener>[0]) => {
+      listener(payload);
+    };
+    ipcRenderer.on(IPC_CHANNELS.contentUpdate, wrapped);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.contentUpdate, wrapped);
   },
 };
 

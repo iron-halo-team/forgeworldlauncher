@@ -207,6 +207,44 @@ async function requestJson<T>(
   throw createAuthError(getNetworkErrorMessage(lastError));
 }
 
+async function requestFirstHealthyJson<T>(
+  config: LauncherStaticConfig,
+  path: string,
+): Promise<T> {
+  if (!config.auth.enabled || !config.auth.baseUrl) {
+    throw createAuthError('Авторизация через лаунчер не настроена.');
+  }
+
+  const targets = createRequestTargets(config, path);
+  const timeoutMs = Math.min(getTimeoutMs(config), 5000);
+
+  return new Promise<T>((resolve, reject) => {
+    let pendingCount = targets.length;
+    let isResolved = false;
+    let lastError: unknown = null;
+
+    for (const target of targets) {
+      void requestTargetJson<T>(target, timeoutMs)
+        .then((result) => {
+          if (isResolved) {
+            return;
+          }
+
+          isResolved = true;
+          resolve(result);
+        })
+        .catch((error) => {
+          lastError = error;
+          pendingCount -= 1;
+
+          if (!isResolved && pendingCount === 0) {
+            reject(createAuthError(getNetworkErrorMessage(lastError)));
+          }
+        });
+    }
+  });
+}
+
 export async function checkLauncherAuthStatus(
   config: LauncherStaticConfig,
 ): Promise<AuthServerStatusPayload> {
@@ -221,7 +259,7 @@ export async function checkLauncherAuthStatus(
   }
 
   try {
-    await requestJson(config, '/auth/health/');
+    await requestFirstHealthyJson(config, '/auth/health/');
     return {
       online: true,
       message: 'Сервер авторизации доступен.',

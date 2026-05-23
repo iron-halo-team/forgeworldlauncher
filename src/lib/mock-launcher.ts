@@ -1,6 +1,7 @@
 import type {
   LauncherApi,
   LauncherBootstrap,
+  LauncherContent,
   LauncherSettings,
   LauncherUpdateInfo,
   ServerStatusPayload,
@@ -46,6 +47,10 @@ const mockConfig = {
   update: {
     metadataUrl: 'https://example.com/forge-world/update.json',
     downloadPage: 'https://example.com/forge-world/download',
+  },
+  content: {
+    remoteUrl: 'https://raw.githubusercontent.com/iron-halo-team/forgeworldlauncher/master/content/launcher-content.json',
+    checkIntervalMs: 30000,
   },
   auth: {
     enabled: true,
@@ -163,6 +168,7 @@ let updateInfo: LauncherUpdateInfo | null = {
 const launchListeners = new Set<(payload: LauncherBootstrap['launchState']) => void>();
 const serverListeners = new Set<(payload: ServerStatusPayload | null) => void>();
 const updateListeners = new Set<(payload: LauncherUpdateInfo | null) => void>();
+const contentListeners = new Set<(payload: LauncherContent) => void>();
 let mockApi: LauncherApi | null = null;
 
 function emitLaunch() {
@@ -307,6 +313,7 @@ export function getLauncherApi(): LauncherApi {
       window.open(url, '_blank', 'noopener,noreferrer');
     },
     async openGameFolder() {},
+    async openModsFolder() {},
     async openLauncherDataFolder() {},
     async openSettingsFile() {},
     async refreshServerStatus() {
@@ -328,6 +335,10 @@ export function getLauncherApi(): LauncherApi {
     onUpdateInfo(listener) {
       updateListeners.add(listener);
       return () => updateListeners.delete(listener);
+    },
+    onContentUpdate(listener) {
+      contentListeners.add(listener);
+      return () => contentListeners.delete(listener);
     },
   };
 

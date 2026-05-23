@@ -19,6 +19,7 @@ export const IPC_CHANNELS = {
   closeWindow: 'launcher:close-window',
   openExternal: 'launcher:open-external',
   openGameFolder: 'launcher:open-game-folder',
+  openModsFolder: 'launcher:open-mods-folder',
   openLauncherDataFolder: 'launcher:open-launcher-data-folder',
   openSettingsFile: 'launcher:open-settings-file',
   refreshServerStatus: 'launcher:refresh-server-status',
@@ -26,4 +27,5 @@ export const IPC_CHANNELS = {
   launchState: 'launcher:event-launch-state',
   serverStatus: 'launcher:event-server-status',
   updateInfo: 'launcher:event-update-info',
+  contentUpdate: 'launcher:event-content-update',
 } as const;

@@ -205,7 +205,12 @@ function parseStatusPacket(packet: Buffer): MinecraftStatusResponse {
 
 async function resolveMinecraftTarget(host: string, port: number): Promise<ResolvedMinecraftTarget> {
   try {
-    const records = await dns.resolveSrv(`_minecraft._tcp.${host}`);
+    const records = await Promise.race([
+      dns.resolveSrv(`_minecraft._tcp.${host}`),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('SRV lookup timeout')), 1200);
+      }),
+    ]);
     const sortedRecords = records
       .filter((record) => record.name && record.port > 0)
       .sort((left, right) => left.priority - right.priority || right.weight - left.weight);
@@ -357,19 +362,57 @@ async function fetchRelayServerStatus(config: LauncherStaticConfig) {
     throw new Error('Relay статуса не настроен.');
   }
 
-  let lastError: unknown = null;
-  const timeoutMs = Math.max(3000, Math.min(config.auth.requestTimeoutMs, 8000));
-  for (const target of createRequestTargets(config, '/server/status/')) {
-    try {
-      return await requestStatusTarget<RelayServerStatus>(target, timeoutMs);
-    } catch (error) {
-      lastError = error;
+  const timeoutMs = Math.max(2000, Math.min(config.auth.requestTimeoutMs, 4000));
+  const targets = createRequestTargets(config, '/server/status/');
+
+  return new Promise<RelayServerStatus>((resolve, reject) => {
+    let pendingCount = targets.length;
+    let isResolved = false;
+    let lastError: unknown = null;
+
+    for (const target of targets) {
+      void requestStatusTarget<RelayServerStatus>(target, timeoutMs)
+        .then((status) => {
+          if (isResolved) {
+            return;
+          }
+
+          isResolved = true;
+          resolve(status);
+        })
+        .catch((error) => {
+          lastError = error;
+          pendingCount -= 1;
+
+          if (!isResolved && pendingCount === 0) {
+            reject(lastError instanceof Error
+              ? lastError
+              : new Error('Сервер статуса сейчас недоступен.'));
+          }
+        });
     }
+  });
+}
+
+async function fetchDirectMinecraftStatus(config: LauncherStaticConfig) {
+  const target = await resolveMinecraftTarget(
+    config.minecraft.server.host,
+    config.minecraft.server.port,
+  );
+
+  try {
+    return await queryMinecraftStatus(target, 2500);
+  } catch {
+    // Some modded hosts accept TCP but do not answer the vanilla status packet.
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Сервер статуса сейчас недоступен.');
+  const reachable = await checkTcpReachable(target, 3500);
+  return {
+    online: true,
+    displayText: 'ONLINE',
+    latencyMs: reachable.latencyMs,
+    error: 'Сервер отвечает, но список игроков пока недоступен.',
+  };
 }
 
 function checkTcpReachable(target: ResolvedMinecraftTarget, timeoutMs: number) {
@@ -437,7 +480,6 @@ export async function fetchServerStatus(
   config: LauncherStaticConfig,
 ): Promise<ServerStatusPayload | null> {
   const host = config.minecraft.server.host;
-  const port = config.minecraft.server.port;
 
   if (!host || host.includes('example')) {
     return {
@@ -447,37 +489,32 @@ export async function fetchServerStatus(
     };
   }
 
+  let relayStatus: ServerStatusPayload | null = null;
   try {
-    const relayStatus = await fetchRelayServerStatus(config);
-    const normalizedRelayStatus = buildRelayStatus(relayStatus);
-    if (normalizedRelayStatus.online) {
-      return normalizedRelayStatus;
+    relayStatus = buildRelayStatus(await fetchRelayServerStatus(config));
+    if (relayStatus.online) {
+      return relayStatus;
     }
   } catch {
-    // The direct probes below still give a useful online/offline signal.
-  }
-
-  const target = await resolveMinecraftTarget(host, port);
-
-  try {
-    return await queryMinecraftStatus(target, 2500);
-  } catch {
-    // Some modded hosts accept TCP but do not answer the vanilla status packet.
+    // Direct Minecraft probing below is a fallback when the bridge is unavailable.
   }
 
   try {
-    const reachable = await checkTcpReachable(target, 5000);
-    return {
-      online: true,
-      displayText: 'ONLINE',
-      latencyMs: reachable.latencyMs,
-      error: 'Сервер отвечает, но список игроков пока недоступен.',
-    };
+    const directStatus = await fetchDirectMinecraftStatus(config);
+    if (directStatus.online) {
+      return directStatus;
+    }
   } catch {
-    return {
-      online: false,
-      displayText: 'OFFLINE',
-      error: 'Не удалось получить статус сервера.',
-    };
+    // Fall back to the bridge error below, if it returned a structured offline state.
   }
+
+  if (relayStatus) {
+    return relayStatus;
+  }
+
+  return {
+    online: false,
+    displayText: 'OFFLINE',
+    error: 'Не удалось получить статус сервера.',
+  };
 }

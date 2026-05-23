@@ -37,6 +37,10 @@ export interface LauncherStaticConfig {
     metadataUrl: string;
     downloadPage: string;
   };
+  content: {
+    remoteUrl: string;
+    checkIntervalMs: number;
+  };
   auth: {
     enabled: boolean;
     baseUrl: string;
@@ -52,7 +56,7 @@ export interface LauncherNewsItem {
   title: string;
   date: string;
   text: string;
-  icon: string;
+  icon?: string;
   url?: string;
 }
 
@@ -172,6 +176,7 @@ export interface LauncherApi {
   closeWindow(): Promise<void>;
   openExternal(url: string): Promise<void>;
   openGameFolder(): Promise<void>;
+  openModsFolder(): Promise<void>;
   openLauncherDataFolder(): Promise<void>;
   openSettingsFile(): Promise<void>;
   refreshServerStatus(): Promise<ServerStatusPayload | null>;
@@ -179,4 +184,5 @@ export interface LauncherApi {
   onLaunchState(listener: (payload: LaunchStatePayload) => void): () => void;
   onServerStatus(listener: (payload: ServerStatusPayload | null) => void): () => void;
   onUpdateInfo(listener: (payload: LauncherUpdateInfo | null) => void): () => void;
+  onContentUpdate(listener: (payload: LauncherContent) => void): () => void;
 }

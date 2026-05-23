@@ -17,6 +17,7 @@ import type {
   AuthServerStatusPayload,
   LaunchStatePayload,
   LauncherBootstrap,
+  LauncherContent,
   LauncherStaticConfig,
   LauncherUpdateInfo,
   ServerStatusPayload,
@@ -51,6 +52,7 @@ import {
 } from './settings-store';
 import { fetchServerStatus } from './server-status';
 import {
+  parseLauncherContent,
   readLauncherContent,
   readStaticConfig,
 } from './static-data';
@@ -66,7 +68,17 @@ let launchState: LaunchStatePayload = {
 let lastServerStatus: ServerStatusPayload | null = null;
 let lastUpdateInfo: LauncherUpdateInfo | null = null;
 let lastAuthStatus: AuthServerStatusPayload | null = null;
+let lastLauncherContent: LauncherContent | null = null;
 let statusInterval: NodeJS.Timeout | null = null;
+let contentInterval: NodeJS.Timeout | null = null;
+let isStatusRefreshRunning = false;
+let isContentRefreshRunning = false;
+let serverStatusFailureCount = 0;
+let authStatusFailureCount = 0;
+let lastServerOnlineAt = 0;
+let lastAuthOnlineAt = 0;
+let lastContentFetchErrorAt = 0;
+let lastGitHubContentEtag = '';
 
 function writeLog(level: 'INFO' | 'ERROR', message: string, error?: unknown) {
   try {
@@ -136,10 +148,13 @@ function withFallback<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
 }
 
 async function loadBootstrap(): Promise<LauncherBootstrap> {
-  const [config, content] = await Promise.all([
+  const [config, localContent] = await Promise.all([
     readStaticConfig(),
     readLauncherContent(),
   ]);
+  if (!lastLauncherContent) {
+    lastLauncherContent = localContent;
+  }
   const settings = await loadSettings(config);
   const bundledDistributionDirectory = getBundledDistributionDirectory();
   const bundledManifest = await readDistributionManifestFrom(bundledDistributionDirectory);
@@ -154,7 +169,7 @@ async function loadBootstrap(): Promise<LauncherBootstrap> {
 
   return {
     config,
-    content,
+    content: lastLauncherContent,
     settings,
     distributionManifest: bundledManifest,
     gameDirectory: gameRoot,
@@ -167,23 +182,319 @@ async function loadBootstrap(): Promise<LauncherBootstrap> {
   };
 }
 
+function getCacheBustedUrl(url: string) {
+  const nextUrl = new URL(url);
+  nextUrl.searchParams.set('_fw', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  return nextUrl.toString();
+}
+
+async function fetchRemoteLauncherContent(config: LauncherStaticConfig) {
+  const remoteUrl = config.content.remoteUrl.trim();
+
+  const githubApiUrl = getGitHubContentApiUrl(remoteUrl);
+  if (githubApiUrl) {
+    return fetchRemoteLauncherContentFromGitHub(githubApiUrl, remoteUrl);
+  }
+
+  return fetchRemoteLauncherContentFromUrl(remoteUrl);
+}
+
+function getGitHubContentApiUrl(remoteUrl: string) {
+  try {
+    const parsedUrl = new URL(remoteUrl);
+    if (parsedUrl.hostname !== 'raw.githubusercontent.com') {
+      return null;
+    }
+
+    const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+    if (pathParts.length < 4) {
+      return null;
+    }
+
+    const [owner, repo, ref, ...filePathParts] = pathParts;
+    const filePath = filePathParts.map((part) => encodeURIComponent(part)).join('/');
+    return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${filePath}?ref=${encodeURIComponent(ref)}`;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchRemoteLauncherContentFromGitHub(apiUrl: string, fallbackRawUrl: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const headers: Record<string, string> = {
+      accept: 'application/vnd.github+json',
+      'cache-control': 'no-cache',
+      pragma: 'no-cache',
+      'user-agent': 'ForgeWorldLauncher',
+      'x-github-api-version': '2022-11-28',
+    };
+
+    if (lastGitHubContentEtag) {
+      headers['if-none-match'] = lastGitHubContentEtag;
+    }
+
+    const response = await fetch(apiUrl, {
+      headers,
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    if (response.status === 304) {
+      return null;
+    }
+
+    if (!response.ok) {
+      return fetchRemoteLauncherContentFromUrl(fallbackRawUrl);
+    }
+
+    const responseEtag = response.headers.get('etag');
+    if (responseEtag) {
+      lastGitHubContentEtag = responseEtag;
+    }
+
+    const payload = await response.json() as {
+      content?: string;
+      encoding?: string;
+      type?: string;
+    };
+
+    if (payload.type !== 'file' || payload.encoding !== 'base64' || !payload.content) {
+      throw new Error('GitHub content response does not contain a base64 file.');
+    }
+
+    const responseText = Buffer
+      .from(payload.content.replace(/\s/g, ''), 'base64')
+      .toString('utf8');
+
+    return parseLauncherContent(parseRemoteContentJson(responseText));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchRemoteLauncherContentFromUrl(remoteUrl: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(getCacheBustedUrl(remoteUrl), {
+      headers: {
+        accept: 'application/json',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+        'user-agent': 'ForgeWorldLauncher',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Content request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const responseText = await response.text();
+    return parseLauncherContent(parseRemoteContentJson(responseText));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseRemoteContentJson(responseText: string) {
+  const normalizedText = responseText.replace(/^\uFEFF/, '');
+
+  try {
+    return JSON.parse(normalizedText) as unknown;
+  } catch {
+    return JSON.parse(escapeLineBreaksInsideJsonStrings(normalizedText)) as unknown;
+  }
+}
+
+function escapeLineBreaksInsideJsonStrings(responseText: string) {
+  let result = '';
+  let isInsideString = false;
+  let isEscaping = false;
+
+  for (let index = 0; index < responseText.length; index += 1) {
+    const character = responseText[index];
+
+    if (!isInsideString) {
+      if (character === '"') {
+        isInsideString = true;
+      }
+
+      result += character;
+      continue;
+    }
+
+    if (isEscaping) {
+      result += character;
+      isEscaping = false;
+      continue;
+    }
+
+    if (character === '\\') {
+      result += character;
+      isEscaping = true;
+      continue;
+    }
+
+    if (character === '"') {
+      result += character;
+      isInsideString = false;
+      continue;
+    }
+
+    if (character === '\r') {
+      if (responseText[index + 1] === '\n') {
+        index += 1;
+      }
+      result += '\\n';
+      continue;
+    }
+
+    if (character === '\n') {
+      result += '\\n';
+      continue;
+    }
+
+    result += character;
+  }
+
+  return result;
+}
+
+async function refreshLauncherContent(config: LauncherStaticConfig) {
+  if (isContentRefreshRunning) {
+    return;
+  }
+
+  isContentRefreshRunning = true;
+  try {
+    const remoteContent = await fetchRemoteLauncherContent(config);
+    if (!remoteContent) {
+      return;
+    }
+
+    const currentSignature = JSON.stringify(lastLauncherContent);
+    const nextSignature = JSON.stringify(remoteContent);
+
+    if (currentSignature === nextSignature) {
+      return;
+    }
+
+    lastLauncherContent = remoteContent;
+    broadcast(IPC_CHANNELS.contentUpdate, remoteContent);
+    lastContentFetchErrorAt = 0;
+    writeLog('INFO', `Launcher content updated from ${config.content.remoteUrl}`);
+  } catch (error) {
+    const now = Date.now();
+    if (!lastContentFetchErrorAt || now - lastContentFetchErrorAt > 60_000) {
+      lastContentFetchErrorAt = now;
+      writeLog('INFO', 'Remote launcher content was not updated; bundled content remains active.', error);
+    }
+  } finally {
+    isContentRefreshRunning = false;
+  }
+}
+
+function stabilizeServerStatus(nextStatus: ServerStatusPayload | null): ServerStatusPayload | null {
+  const now = Date.now();
+
+  if (nextStatus?.online) {
+    serverStatusFailureCount = 0;
+    lastServerOnlineAt = now;
+    return nextStatus;
+  }
+
+  serverStatusFailureCount += 1;
+  if (
+    lastServerStatus?.online
+    && lastServerOnlineAt > 0
+    && now - lastServerOnlineAt < 90_000
+    && serverStatusFailureCount < 4
+  ) {
+    return {
+      ...lastServerStatus,
+      error: 'Сервер отвечает нестабильно, статус перепроверяется...',
+    };
+  }
+
+  return nextStatus;
+}
+
+function stabilizeAuthStatus(nextStatus: AuthServerStatusPayload): AuthServerStatusPayload {
+  const now = Date.now();
+
+  if (nextStatus.online) {
+    authStatusFailureCount = 0;
+    lastAuthOnlineAt = now;
+    return nextStatus;
+  }
+
+  authStatusFailureCount += 1;
+  if (
+    lastAuthStatus?.online
+    && lastAuthOnlineAt > 0
+    && now - lastAuthOnlineAt < 90_000
+    && authStatusFailureCount < 4
+  ) {
+    return {
+      ...lastAuthStatus,
+      checkedAt: nextStatus.checkedAt,
+      message: 'Сервер авторизации перепроверяется...',
+    };
+  }
+
+  return nextStatus;
+}
+
+async function refreshAuthStatus(config: LauncherStaticConfig) {
+  const fallbackAuthStatus: AuthServerStatusPayload = {
+    online: false,
+    message: 'Сервер авторизации сейчас недоступен.',
+    checkedAt: new Date().toISOString(),
+  };
+
+  const nextStatus = await withFallback(
+    checkLauncherAuthStatus(config),
+    fallbackAuthStatus,
+    6000,
+  );
+
+  lastAuthStatus = stabilizeAuthStatus(nextStatus);
+  return lastAuthStatus;
+}
+
 async function refreshStatusAndUpdates(config: LauncherStaticConfig) {
+  if (isStatusRefreshRunning) {
+    return;
+  }
+
+  isStatusRefreshRunning = true;
   const fallbackServerStatus: ServerStatusPayload = {
     online: false,
     displayText: 'OFFLINE',
     error: 'Не удалось получить статус сервера.',
   };
-  const [serverStatus, updateInfo] = await Promise.all([
-    withFallback(fetchServerStatus(config), fallbackServerStatus, 12_000),
-    withFallback(fetchAvailableUpdate(config), null, 5000),
-  ]);
 
-  lastServerStatus = serverStatus;
-  lastUpdateInfo = updateInfo;
-  lastAuthStatus = await checkLauncherAuthStatus(config);
+  try {
+    const [serverStatus, updateInfo] = await Promise.all([
+      withFallback(fetchServerStatus(config), fallbackServerStatus, 7000),
+      withFallback(fetchAvailableUpdate(config), null, 5000),
+      refreshAuthStatus(config),
+    ]);
 
-  broadcast(IPC_CHANNELS.serverStatus, serverStatus);
-  broadcast(IPC_CHANNELS.updateInfo, updateInfo);
+    lastServerStatus = stabilizeServerStatus(serverStatus);
+    lastUpdateInfo = updateInfo;
+
+    broadcast(IPC_CHANNELS.serverStatus, lastServerStatus);
+    broadcast(IPC_CHANNELS.updateInfo, updateInfo);
+  } finally {
+    isStatusRefreshRunning = false;
+  }
 }
 
 async function startBackgroundRefresh(config: LauncherStaticConfig) {
@@ -194,7 +505,18 @@ async function startBackgroundRefresh(config: LauncherStaticConfig) {
   void refreshStatusAndUpdates(config);
   statusInterval = setInterval(() => {
     void refreshStatusAndUpdates(config);
-  }, 10_000);
+  }, 5_000);
+}
+
+async function startContentRefresh(config: LauncherStaticConfig) {
+  if (contentInterval) {
+    clearInterval(contentInterval);
+  }
+
+  void refreshLauncherContent(config);
+  contentInterval = setInterval(() => {
+    void refreshLauncherContent(config);
+  }, Math.max(3_000, config.content.checkIntervalMs));
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -281,6 +603,7 @@ async function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.bootstrap, async () => {
     const bootstrap = await loadBootstrap();
     void startBackgroundRefresh(bootstrap.config);
+    void startContentRefresh(bootstrap.config);
     return bootstrap;
   });
 
@@ -367,8 +690,7 @@ async function registerIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.checkAuthStatus, async () => {
     const config = await readStaticConfig();
-    lastAuthStatus = await checkLauncherAuthStatus(config);
-    return lastAuthStatus;
+    return refreshAuthStatus(config);
   });
 
   ipcMain.handle(IPC_CHANNELS.launchGame, async () => {
@@ -449,6 +771,17 @@ async function registerIpcHandlers() {
     await shell.openPath(getGameRoot(config));
   });
 
+  ipcMain.handle(IPC_CHANNELS.openModsFolder, async () => {
+    const config = await readStaticConfig();
+    const modsPath = path.join(getGameRoot(config), 'mods');
+
+    if (!existsSync(modsPath)) {
+      mkdirSync(modsPath, { recursive: true });
+    }
+
+    await shell.openPath(modsPath);
+  });
+
   ipcMain.handle(IPC_CHANNELS.openLauncherDataFolder, async () => {
     await shell.openPath(getUserDataRoot());
   });
@@ -495,6 +828,10 @@ app.on('before-quit', () => {
   if (statusInterval) {
     clearInterval(statusInterval);
     statusInterval = null;
+  }
+  if (contentInterval) {
+    clearInterval(contentInterval);
+    contentInterval = null;
   }
 });
 

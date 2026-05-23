@@ -95,11 +95,19 @@ export function App() {
       } : current);
     });
 
+    const unsubscribeContent = launcher.onContentUpdate((payload) => {
+      setBootstrap((current) => current ? {
+        ...current,
+        content: payload,
+      } : current);
+    });
+
     return () => {
       isMounted = false;
       unsubscribeLaunch();
       unsubscribeServer();
       unsubscribeUpdate();
+      unsubscribeContent();
     };
   }, [launcher]);
 
@@ -119,7 +127,7 @@ export function App() {
     };
 
     refreshAuthStatus();
-    const interval = setInterval(refreshAuthStatus, 60_000);
+    const interval = setInterval(refreshAuthStatus, 15_000);
 
     return () => {
       isMounted = false;
@@ -341,16 +349,26 @@ export function App() {
                 </button>
                 {isLaunchMenuOpen ? (
                   <div className="launch-options-popover">
-                    <span>Прямое подключение</span>
+                    <div className="launch-options-toggle-row">
+                      <span>Прямое подключение</span>
+                      <button
+                        type="button"
+                        className={`switch-button ${settings.directConnectOnLaunch ? 'is-on' : 'is-off'}`}
+                        aria-label={settings.directConnectOnLaunch ? 'Отключить прямое подключение' : 'Включить прямое подключение'}
+                        onClick={() => void saveSettingsPatch({
+                          directConnectOnLaunch: !settings.directConnectOnLaunch,
+                        })}
+                      >
+                        <span />
+                      </button>
+                    </div>
+
                     <button
                       type="button"
-                      className={`switch-button ${settings.directConnectOnLaunch ? 'is-on' : 'is-off'}`}
-                      aria-label={settings.directConnectOnLaunch ? 'Отключить прямое подключение' : 'Включить прямое подключение'}
-                      onClick={() => void saveSettingsPatch({
-                        directConnectOnLaunch: !settings.directConnectOnLaunch,
-                      })}
+                      className="launch-options-folder-button"
+                      onClick={() => void launcher.openModsFolder()}
                     >
-                      <span />
+                      папка mods
                     </button>
                   </div>
                 ) : null}

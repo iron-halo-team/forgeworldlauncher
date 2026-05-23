@@ -35,12 +35,16 @@
     "metadataUrl": "https://raw.githubusercontent.com/iron-halo-team/forgeworld/main/updates/metadata.json",
     "downloadPage": "https://github.com/iron-halo-team/forgeworld/blob/main/updates/download.md"
   },
+  "content": {
+    "remoteUrl": "https://raw.githubusercontent.com/iron-halo-team/forgeworldlauncher/master/content/launcher-content.json",
+    "checkIntervalMs": 5000
+  },
   "auth": {
     "enabled": true,
-    "baseUrl": "http://f10.joinserver.xyz:25797",
-    "fallbackBaseUrl": "http://95.217.53.168:25797",
+    "baseUrl": "http://f10.joinserver.xyz:25833",
+    "fallbackBaseUrl": "http://f10.joinserver.xyz:25797",
     "hostHeader": "",
-    "requestTimeoutMs": 30000
+    "requestTimeoutMs": 12000
   },
   "preserveOnUpdate": [
     "options.txt",

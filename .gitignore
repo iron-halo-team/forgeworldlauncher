@@ -20,15 +20,37 @@ distribution-source/automodpack
 
 # Runtime / caches
 .tmp/
+.vite/
+.eslintcache
+coverage/
 *.tmp
 *.cache
+*.tsbuildinfo
+*.bak
+*.old
+*.stackdump
+*.dmp
+*.heapdump
 build/.installer-cache/
 build/.distribution-workdir/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Local launcher content drafts. Keep content/launcher-content.json tracked as bundled fallback;
+# live news/history updates must be edited on GitHub.
+content/*.local.json
+content/*.draft.json
 
 # Local third-party server jars and bridge build output
 aditional/
 server-auth-bridge/build/
+server-auth-bridge/.gradle/
 server-auth-bridge/lib/
+server-auth-bridge/out/
+server-auth-bridge/target/
 server-auth-bridge/*.jar
 server-auth-bridge/**/sessions.yml
 web-auth-relay/forgeworld-auth/data/*.json
@@ -38,6 +60,10 @@ web-auth-relay/forgeworld-auth/config.local.php
 # Logs and local diagnostics
 *.log
 tmp-*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Temporary installer/debug artifacts
 installer.chunk
@@ -47,6 +73,7 @@ installer.part1.jar
 installer.part1.node
 installer.resume.jar
 BIT32CC.tmp
+/minecraft.js
 
 # OS / editor noise
 .DS_Store

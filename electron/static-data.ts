@@ -47,6 +47,10 @@ const staticConfigSchema = z.object({
     metadataUrl: z.string().url(),
     downloadPage: z.string().url(),
   }),
+  content: z.object({
+    remoteUrl: z.string().url(),
+    checkIntervalMs: z.number().int().positive(),
+  }),
   auth: z.object({
     enabled: z.boolean(),
     baseUrl: z.union([z.string().url(), z.literal('')]),
@@ -66,7 +70,7 @@ const contentSchema = z.object({
     title: z.string(),
     date: z.string(),
     text: z.string(),
-    icon: z.string(),
+    icon: z.string().optional(),
     url: z.union([z.string().url(), z.literal('')]).optional(),
   })),
   timeline: z.array(z.object({
@@ -94,6 +98,10 @@ export async function readStaticConfig(): Promise<LauncherStaticConfig> {
 
 export async function readLauncherContent(): Promise<LauncherContent> {
   const raw = await readJson(getLauncherContentPath());
+  return parseLauncherContent(raw);
+}
+
+export function parseLauncherContent(raw: unknown): LauncherContent {
   return contentSchema.parse(raw);
 }
 
