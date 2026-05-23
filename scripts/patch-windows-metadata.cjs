@@ -95,23 +95,13 @@ function patchLatestYml(releaseDir, installerName) {
 function patchReleaseMetadata(rootDir = process.cwd()) {
   const releaseDir = path.join(rootDir, 'release');
   const appExe = path.join(releaseDir, 'win-unpacked', 'Forge World Launcher.exe');
-  const installerName = 'Forge-World-Launcher-3.0.exe';
-  const installerExe = path.join(releaseDir, installerName);
 
   if (fs.existsSync(appExe)) {
     patchWindowsMetadata(appExe);
   }
 
-  if (fs.existsSync(installerExe)) {
-    patchWindowsMetadata(installerExe, {
-      OriginalFilename: installerName,
-    });
-    patchLatestYml(releaseDir, installerName);
-  }
-
   for (const generatedFile of [
     'builder-debug.yml',
-    'Forge-World-Launcher-3.0.exe.blockmap',
     'Forge-World-Launcher-1.2.0.exe.blockmap',
   ]) {
     fs.rmSync(path.join(releaseDir, generatedFile), { force: true });

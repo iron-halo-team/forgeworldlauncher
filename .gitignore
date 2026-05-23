@@ -13,10 +13,10 @@ client/
 distribution-source/mods/
 distribution-source/resourcepacks/
 distribution-source/shaderpacks/
-distribution-source/servers.dat
-distribution-source/options.txt
-distribution-source/optionsof.txt
-distribution-source/automodpack
+distribution-source/servers.dat/
+distribution-source/options.txt/
+distribution-source/optionsof.txt/
+distribution-source/automodpack/
 
 # Runtime / caches
 .tmp/
