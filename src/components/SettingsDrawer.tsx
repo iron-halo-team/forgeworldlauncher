@@ -8,6 +8,7 @@ interface SettingsDrawerProps {
   config: LauncherStaticConfig;
   settings: LauncherSettings;
   onRamChange: (value: number) => void;
+  onRamReset: () => void;
   onToggleHideLauncher: (value: boolean) => void;
   onToggleCloseLauncher: (value: boolean) => void;
   onClose: () => void;
@@ -17,15 +18,33 @@ function formatRamLabel(value: number) {
   return `${(value / 1024).toFixed(1).replace('.0', '')} ГБ`;
 }
 
+function getRamWarning(value: number, config: LauncherStaticConfig) {
+  if (value < config.minecraft.recommendedRamMb) {
+    return 'Выбрано меньше рекомендованного значения. Игра может запускаться нестабильно или вылетать при загрузке модов.';
+  }
+
+  if (value > config.minecraft.safeMaximumRamMb) {
+    return 'Выбрано слишком много памяти для этого устройства. Windows и фоновые процессы могут начать мешать игре.';
+  }
+
+  if (value > config.minecraft.recommendedRamMb) {
+    return 'Значение выше рекомендованного. Это можно оставить, если сборке действительно не хватает памяти.';
+  }
+
+  return '';
+}
+
 export function SettingsDrawer(props: SettingsDrawerProps) {
   const {
     config,
     settings,
     onRamChange,
+    onRamReset,
     onToggleHideLauncher,
     onToggleCloseLauncher,
     onClose,
   } = props;
+  const ramWarning = getRamWarning(settings.allocatedRamMb, config);
 
   return (
     <div className="settings-overlay" role="presentation" onClick={onClose}>
@@ -48,6 +67,12 @@ export function SettingsDrawer(props: SettingsDrawerProps) {
               <p className="settings-warning">
                 Не меняйте это значение, если не понимаете, что делаете: неверное выделение памяти может ухудшить запуск и стабильность игры.
               </p>
+              <p className="settings-memory-summary">
+                Рекомендовано: {formatRamLabel(config.minecraft.recommendedRamMb)}. Память устройства: {formatRamLabel(config.minecraft.deviceTotalRamMb)}.
+              </p>
+              {ramWarning ? (
+                <p className="settings-warning is-alert">{ramWarning}</p>
+              ) : null}
             </div>
             <strong>{formatRamLabel(settings.allocatedRamMb)}</strong>
           </div>
@@ -64,6 +89,9 @@ export function SettingsDrawer(props: SettingsDrawerProps) {
             <span>{formatRamLabel(config.minecraft.minimumRamMb)}</span>
             <span>{formatRamLabel(config.minecraft.maximumRamMb)}</span>
           </div>
+          <button type="button" className="settings-default-button" onClick={onRamReset}>
+            По умолчанию
+          </button>
         </section>
 
         <section className="settings-section">
@@ -96,15 +124,11 @@ export function SettingsDrawer(props: SettingsDrawerProps) {
           <div className="settings-actions">
             <button type="button" className="ghost-button" onClick={() => void window.launcher.openGameFolder()}>
               <GlyphIcon name="folder" />
-              <span>Открыть папку сборки</span>
+              <span>Открыть корень игры</span>
             </button>
             <button type="button" className="ghost-button" onClick={() => void window.launcher.openLauncherDataFolder()}>
               <GlyphIcon name="folder" />
               <span>Открыть папку лаунчера</span>
-            </button>
-            <button type="button" className="ghost-button" onClick={() => void window.launcher.openSettingsFile()}>
-              <GlyphIcon name="file" />
-              <span>Открыть settings.json</span>
             </button>
           </div>
         </section>

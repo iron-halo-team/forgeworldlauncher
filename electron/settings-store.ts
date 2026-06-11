@@ -11,6 +11,7 @@ const settingsPatchSchema = z.object({
   authToken: z.string().optional(),
   authTokenExpiresAt: z.string().optional(),
   allocatedRamMb: z.number().int().min(1024).max(65536).optional(),
+  ramConfiguredManually: z.boolean().optional(),
   hideLauncherOnGameStart: z.boolean().optional(),
   closeLauncherWhenGameCloses: z.boolean().optional(),
   directConnectOnLaunch: z.boolean().optional(),
@@ -22,6 +23,7 @@ function getDefaultSettings(config: LauncherStaticConfig): LauncherSettings {
     authToken: '',
     authTokenExpiresAt: '',
     allocatedRamMb: config.minecraft.defaultRamMb,
+    ramConfiguredManually: false,
     hideLauncherOnGameStart: true,
     closeLauncherWhenGameCloses: false,
     directConnectOnLaunch: config.minecraft.directConnectOnLaunch,
@@ -55,13 +57,16 @@ export async function loadSettings(config: LauncherStaticConfig): Promise<Launch
     return defaults;
   }
 
+  const ramConfiguredManually = parsed.data.ramConfiguredManually === true;
+  const allocatedRamMb = ramConfiguredManually
+    ? parsed.data.allocatedRamMb ?? defaults.allocatedRamMb
+    : Math.max(parsed.data.allocatedRamMb ?? defaults.allocatedRamMb, defaults.allocatedRamMb);
+
   return {
     ...defaults,
     ...parsed.data,
-    allocatedRamMb: normalizeRamValue(
-      parsed.data.allocatedRamMb ?? defaults.allocatedRamMb,
-      config,
-    ),
+    ramConfiguredManually,
+    allocatedRamMb: normalizeRamValue(allocatedRamMb, config),
   };
 }
 
@@ -71,10 +76,16 @@ export async function saveSettings(
 ) {
   const validatedPatch = settingsPatchSchema.parse(patch);
   const current = await loadSettings(config);
+  const nextRamConfiguredManually = validatedPatch.ramConfiguredManually ?? (
+    validatedPatch.allocatedRamMb !== undefined
+      ? true
+      : current.ramConfiguredManually
+  );
 
   const next: LauncherSettings = {
     ...current,
     ...validatedPatch,
+    ramConfiguredManually: nextRamConfiguredManually,
     allocatedRamMb: normalizeRamValue(
       validatedPatch.allocatedRamMb ?? current.allocatedRamMb,
       config,

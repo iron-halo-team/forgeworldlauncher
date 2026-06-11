@@ -1,6 +1,7 @@
 package com.forgeworld.authbridge;
 
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import fr.xephi.authme.api.v3.AuthMeApi;
 import fr.xephi.authme.api.v3.AuthMePlayer;
@@ -10,7 +11,9 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.server.ServerCommandEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -58,6 +61,8 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     private boolean httpEnabled;
     private String bindHost;
     private int port;
+    private int httpBacklog;
+    private int httpThreads;
     private boolean trustProxyHeaders;
     private String corsOrigin;
     private boolean relayEnabled;
@@ -84,6 +89,9 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     private volatile String cachedServerVersion = "";
     private volatile String cachedMotd = "";
     private volatile String cachedPlayerNamesJson = "[]";
+    private volatile String cachedAuthMeVersion = "";
+    private volatile String cachedPluginVersion = "";
+    private volatile long serverReloadUntilMillis = 0L;
 
     @Override
     public void onEnable() {
@@ -96,6 +104,8 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
             Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
+        cachedAuthMeVersion = authMeApi.getPluginVersion();
+        cachedPluginVersion = getDescription().getVersion();
 
         loadRememberSessions();
         Bukkit.getPluginManager().registerEvents(this, this);
@@ -119,7 +129,9 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
 
         httpEnabled = getConfig().getBoolean("http.enabled", true);
         bindHost = getConfig().getString("http.bind-host", "0.0.0.0");
-        port = getConfig().getInt("http.port", 25797);
+        port = getConfig().getInt("http.port", 25833);
+        httpBacklog = Math.max(16, getConfig().getInt("http.backlog", 64));
+        httpThreads = Math.max(4, getConfig().getInt("http.threads", 12));
         trustProxyHeaders = getConfig().getBoolean("http.trust-proxy-headers", false);
         corsOrigin = getConfig().getString("http.cors-origin", "*");
 
@@ -164,19 +176,19 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
         }
 
         try {
-            httpServer = HttpServer.create(new InetSocketAddress(bindHost, port), 0);
-            httpServer.createContext("/auth/health", this::handleHealth);
-            httpServer.createContext("/auth/register", exchange -> handleAuth(exchange, AuthAction.REGISTER));
-            httpServer.createContext("/auth/login", exchange -> handleAuth(exchange, AuthAction.LOGIN));
-            httpServer.createContext("/auth/session", this::handleSession);
-            httpServer.createContext("/auth/logout", this::handleLogout);
-            httpServer.createContext("/auth/profile", this::handleProfile);
-            httpServer.createContext("/auth/email", this::handleEmailUpdate);
-            httpServer.createContext("/auth/password", this::handlePasswordChange);
-            httpServer.createContext("/auth/recovery", this::handlePasswordRecovery);
-            httpServer.createContext("/server/status", this::handleServerStatus);
+            httpServer = HttpServer.create(new InetSocketAddress(bindHost, port), httpBacklog);
+            createSafeContext("/auth/health", this::handleHealth);
+            createSafeContext("/auth/register", exchange -> handleAuth(exchange, AuthAction.REGISTER));
+            createSafeContext("/auth/login", exchange -> handleAuth(exchange, AuthAction.LOGIN));
+            createSafeContext("/auth/session", this::handleSession);
+            createSafeContext("/auth/logout", this::handleLogout);
+            createSafeContext("/auth/profile", this::handleProfile);
+            createSafeContext("/auth/email", this::handleEmailUpdate);
+            createSafeContext("/auth/password", this::handlePasswordChange);
+            createSafeContext("/auth/recovery", this::handlePasswordRecovery);
+            createSafeContext("/server/status", this::handleServerStatus);
 
-            httpExecutor = Executors.newFixedThreadPool(4, task -> {
+            httpExecutor = Executors.newFixedThreadPool(httpThreads, task -> {
                 Thread thread = new Thread(task, "ForgeWorldAuthBridge-HTTP");
                 thread.setDaemon(true);
                 return thread;
@@ -191,6 +203,21 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
             getLogger().severe("Launcher registration and auto-login require one free public TCP port.");
             Bukkit.getPluginManager().disablePlugin(this);
         }
+    }
+
+    private void createSafeContext(String path, HttpHandler handler) {
+        httpServer.createContext(path, exchange -> {
+            try {
+                handler.handle(exchange);
+            } catch (Exception error) {
+                getLogger().warning("HTTP request failed at " + path + ": " + error.getMessage());
+                try {
+                    sendJson(exchange, 500, jsonError("Сервер авторизации временно не ответил. Попробуйте ещё раз."));
+                } catch (Exception ignored) {
+                    exchange.close();
+                }
+            }
+        });
     }
 
     private void stopHttpServer() {
@@ -380,6 +407,34 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
         Bukkit.getScheduler().runTaskLater(this, () -> finishAutoLogin(player.getName(), usernameKey), autoLoginDelayTicks);
     }
 
+    @EventHandler
+    public void onServerCommand(ServerCommandEvent event) {
+        markReloadCommand(event.getCommand());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPlayerCommand(PlayerCommandPreprocessEvent event) {
+        markReloadCommand(event.getMessage());
+    }
+
+    private void markReloadCommand(String command) {
+        if (command == null) {
+            return;
+        }
+
+        String normalized = command.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1).trim();
+        }
+
+        if (normalized.equals("reload")
+            || normalized.startsWith("reload ")
+            || normalized.equals("minecraft:reload")
+            || normalized.startsWith("minecraft:reload ")) {
+            serverReloadUntilMillis = System.currentTimeMillis() + 60_000L;
+        }
+    }
+
     private void finishAutoLogin(String playerName, String usernameKey) {
         Player player = Bukkit.getPlayerExact(playerName);
         if (player == null || !player.isOnline()) {
@@ -409,8 +464,8 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
         sendJson(exchange, 200, "{"
             + "\"ok\":true,"
             + "\"message\":\"Сервер авторизации доступен.\","
-            + "\"authMeVersion\":\"" + json(authMeApi.getPluginVersion()) + "\","
-            + "\"pluginVersion\":\"" + json(getDescription().getVersion()) + "\""
+            + "\"authMeVersion\":\"" + json(cachedAuthMeVersion) + "\","
+            + "\"pluginVersion\":\"" + json(cachedPluginVersion) + "\""
             + "}");
     }
 
@@ -424,16 +479,19 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
             return;
         }
 
+        boolean isReloading = System.currentTimeMillis() < serverReloadUntilMillis;
+
         sendJson(exchange, 200, "{"
             + "\"ok\":true,"
             + "\"online\":true,"
+            + "\"serverState\":\"" + (isReloading ? "restarting" : "online") + "\","
             + "\"displayText\":\"" + json(formatPlayers(cachedPlayersOnline)) + "\","
             + "\"playersOnline\":" + cachedPlayersOnline + ","
             + "\"maxPlayers\":" + cachedMaxPlayers + ","
-            + "\"players\":" + playerNamesJson() + ","
+            + "\"players\":" + cachedPlayerNamesJson + ","
             + "\"serverVersion\":\"" + json(cachedServerVersion) + "\","
             + "\"motd\":\"" + json(cachedMotd) + "\","
-            + "\"message\":\"Сервер онлайн.\","
+            + "\"message\":\"" + (isReloading ? "Сервер перезагружается." : "Сервер онлайн.") + "\","
             + "\"checkedAt\":\"" + json(Instant.now().toString()) + "\""
             + "}");
     }

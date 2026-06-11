@@ -1,6 +1,6 @@
 {
   "name": "forge-world-launcher",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Official Forge World launcher",
   "main": "dist-electron/electron/main.js",
   "author": "Iron Halo team",
@@ -61,7 +61,6 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "content/**/*",
       "updates/**/*",
       "ico/**/*",
       "launcher.config.json",
@@ -84,7 +83,7 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "Forge-World-Launcher-3.0.${ext}"
+      "artifactName": "Forge-World-Launcher-3.1.${ext}"
     },
     "nsis": {
       "language": "1049",

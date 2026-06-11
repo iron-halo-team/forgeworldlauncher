@@ -21,6 +21,8 @@ interface RelayServerStatus {
   maxPlayers?: number | string;
   players?: unknown;
   message?: string;
+  serverState?: string;
+  state?: string;
   latencyMs?: number | string;
 }
 
@@ -282,6 +284,7 @@ function queryMinecraftStatus(target: ResolvedMinecraftTarget, timeoutMs: number
 
         finish(undefined, {
           online: true,
+          serverState: 'online',
           displayText: formatPlayers(playersOnline),
           playersOnline,
           maxPlayers,
@@ -313,7 +316,7 @@ function requestStatusTarget<T>(
 
     const headers: Record<string, string> = {
       accept: 'application/json',
-      'user-agent': 'ForgeWorldLauncher/3.0',
+      'user-agent': 'ForgeWorldLauncher/3.1',
     };
     if (target.hostHeader) {
       headers.host = target.hostHeader;
@@ -362,7 +365,7 @@ async function fetchRelayServerStatus(config: LauncherStaticConfig) {
     throw new Error('Relay статуса не настроен.');
   }
 
-  const timeoutMs = Math.max(2000, Math.min(config.auth.requestTimeoutMs, 4000));
+  const timeoutMs = Math.max(2000, Math.min(config.auth.requestTimeoutMs, 4500));
   const targets = createRequestTargets(config, '/server/status/');
 
   return new Promise<RelayServerStatus>((resolve, reject) => {
@@ -394,7 +397,7 @@ async function fetchRelayServerStatus(config: LauncherStaticConfig) {
   });
 }
 
-async function fetchDirectMinecraftStatus(config: LauncherStaticConfig) {
+async function fetchDirectMinecraftStatus(config: LauncherStaticConfig): Promise<ServerStatusPayload> {
   const target = await resolveMinecraftTarget(
     config.minecraft.server.host,
     config.minecraft.server.port,
@@ -403,16 +406,13 @@ async function fetchDirectMinecraftStatus(config: LauncherStaticConfig) {
   try {
     return await queryMinecraftStatus(target, 2500);
   } catch {
-    // Some modded hosts accept TCP but do not answer the vanilla status packet.
+    return {
+      online: false,
+      displayText: 'OFFLINE',
+      serverState: 'offline',
+      error: 'Сервер остановлен',
+    };
   }
-
-  const reachable = await checkTcpReachable(target, 3500);
-  return {
-    online: true,
-    displayText: 'ONLINE',
-    latencyMs: reachable.latencyMs,
-    error: 'Сервер отвечает, но список игроков пока недоступен.',
-  };
 }
 
 function checkTcpReachable(target: ResolvedMinecraftTarget, timeoutMs: number) {
@@ -457,22 +457,37 @@ function buildRelayStatus(relayStatus: RelayServerStatus): ServerStatusPayload {
   const playersOnline = toNumber(relayStatus.playersOnline);
   const maxPlayers = toNumber(relayStatus.maxPlayers);
   const online = relayStatus.online === true;
+  const rawServerState = typeof relayStatus.serverState === 'string'
+    ? relayStatus.serverState
+    : typeof relayStatus.state === 'string'
+      ? relayStatus.state
+      : '';
+  const serverState = rawServerState === 'restarting' || rawServerState === 'reload'
+    ? 'restarting'
+    : online
+      ? 'online'
+      : 'offline';
   const players = Array.isArray(relayStatus.players)
     ? relayStatus.players.filter((name): name is string => typeof name === 'string' && Boolean(name.trim()))
     : undefined;
 
   return {
     online,
+    serverState,
     displayText: online
-      ? relayStatus.displayText || formatPlayers(playersOnline)
+      ? serverState === 'restarting'
+        ? 'RELOAD'
+        : relayStatus.displayText || formatPlayers(playersOnline)
       : 'OFFLINE',
     playersOnline: online ? playersOnline : undefined,
     maxPlayers: online ? maxPlayers : undefined,
     players: online ? players : undefined,
     latencyMs: toOptionalNumber(relayStatus.latencyMs),
     error: online
-      ? undefined
-      : relayStatus.message || 'Сервер сейчас недоступен.',
+      ? serverState === 'restarting'
+        ? 'Сервер перезагружается'
+        : undefined
+      : 'Сервер остановлен',
   };
 }
 
@@ -485,18 +500,27 @@ export async function fetchServerStatus(
     return {
       online: false,
       displayText: 'OFFLINE',
+      serverState: 'offline',
       error: 'Укажите реальный адрес сервера в launcher.config.json',
     };
   }
 
   let relayStatus: ServerStatusPayload | null = null;
+  let relayAnswered = false;
   try {
-    relayStatus = buildRelayStatus(await fetchRelayServerStatus(config));
+    const rawRelayStatus = await fetchRelayServerStatus(config);
+    relayStatus = buildRelayStatus(rawRelayStatus);
     if (relayStatus.online) {
       return relayStatus;
     }
+
+    relayAnswered = rawRelayStatus.ok === true || rawRelayStatus.online === false;
   } catch {
     // Direct Minecraft probing below is a fallback when the bridge is unavailable.
+  }
+
+  if (relayAnswered && relayStatus) {
+    return relayStatus;
   }
 
   try {
@@ -515,6 +539,7 @@ export async function fetchServerStatus(
   return {
     online: false,
     displayText: 'OFFLINE',
-    error: 'Не удалось получить статус сервера.',
+    serverState: 'offline',
+    error: 'Сервер остановлен',
   };
 }

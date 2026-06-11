@@ -29,6 +29,9 @@ const mockConfig = {
     defaultRamMb: 6144,
     minimumRamMb: 3072,
     maximumRamMb: 16384,
+    recommendedRamMb: 6144,
+    safeMaximumRamMb: 12288,
+    deviceTotalRamMb: 16384,
     minimumLaunchRamMb: 2048,
     directConnectOnLaunch: true,
     server: {
@@ -139,6 +142,7 @@ let mockSettings: LauncherSettings = {
   authToken: '',
   authTokenExpiresAt: '',
   allocatedRamMb: 6144,
+  ramConfiguredManually: false,
   hideLauncherOnGameStart: true,
   closeLauncherWhenGameCloses: false,
   directConnectOnLaunch: true,

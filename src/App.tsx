@@ -45,6 +45,7 @@ export function App() {
   const [accountProfile, setAccountProfile] = useState<LauncherAccountProfile | null>(null);
   const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false);
   const [isPlayersPopupOpen, setIsPlayersPopupOpen] = useState(false);
+  const [isStatusPopupOpen, setIsStatusPopupOpen] = useState(false);
   const [isBusy, startTransition] = useTransition();
   const [isLaunching, setIsLaunching] = useState(false);
 
@@ -127,7 +128,7 @@ export function App() {
     };
 
     refreshAuthStatus();
-    const interval = setInterval(refreshAuthStatus, 15_000);
+    const interval = setInterval(refreshAuthStatus, 3_000);
 
     return () => {
       isMounted = false;
@@ -233,6 +234,28 @@ export function App() {
     return result.message;
   };
 
+  const refreshVisibleStatuses = () => {
+    void launcher.refreshServerStatus()
+      .then((payload) => {
+        setBootstrap((current) => current ? {
+          ...current,
+          serverStatus: payload,
+        } : current);
+      })
+      .catch(() => undefined);
+
+    if (config.auth.enabled) {
+      void launcher.checkAuthStatus()
+        .then((payload) => setAuthStatus(payload))
+        .catch(() => undefined);
+    }
+  };
+
+  const openStatusPopup = () => {
+    setIsStatusPopupOpen(true);
+    refreshVisibleStatuses();
+  };
+
   const launchGame = async () => {
     setIsLaunching(true);
 
@@ -265,6 +288,35 @@ export function App() {
   const isAuthDialogOpen = selectedView === 'login'
     || selectedView === 'register'
     || selectedView === 'profile';
+  const isServerOnline = serverStatus?.online === true;
+  const isServerRestarting = serverStatus?.serverState === 'restarting';
+  const isAuthOffline = authStatus?.online === false;
+  const statusIndicatorState = !serverStatus
+    ? 'is-checking'
+    : isServerRestarting
+      ? 'is-warning'
+      : isServerOnline
+      ? isAuthOffline ? 'is-warning' : 'is-online'
+      : 'is-offline';
+  const statusIndicatorLabel = !serverStatus
+    ? 'CHECK'
+    : isServerRestarting
+      ? 'RELOAD'
+      : isServerOnline
+      ? isAuthOffline ? 'WARNING' : 'ONLINE'
+      : 'OFFLINE';
+  const authStatusText = authStatus
+    ? authStatus.online ? 'Доступен' : 'Недоступен'
+    : 'Проверяем...';
+  const serverStatusText = !serverStatus
+    ? 'Проверяем...'
+    : isServerRestarting
+    ? 'Сервер перезагружается'
+    : isServerOnline
+    ? typeof serverStatus.playersOnline === 'number' && typeof serverStatus.maxPlayers === 'number'
+      ? `Онлайн: ${serverStatus.playersOnline}/${serverStatus.maxPlayers}`
+      : 'Сервер отвечает'
+    : 'Сервер остановлен';
 
   return (
     <main className="launcher-shell">
@@ -275,10 +327,37 @@ export function App() {
         <WindowControls />
       </header>
 
-      <div className={`auth-status-indicator ${authStatus?.online ? 'is-online' : 'is-offline'}`}>
+      <button
+        type="button"
+        className={`server-status-indicator ${statusIndicatorState}`}
+        onClick={openStatusPopup}
+        aria-label="Показать статус серверов"
+      >
         <span />
-        <strong>{authStatus?.online ? 'ONLINE' : 'OFFLINE'}</strong>
-      </div>
+        <strong>{statusIndicatorLabel}</strong>
+      </button>
+
+      {isStatusPopupOpen ? (
+        <div className="status-popup-layer" role="presentation" onClick={() => setIsStatusPopupOpen(false)}>
+          <section className="status-popup" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <p className="sidebar-caption">СТАТУС</p>
+            <div className="status-popup-row">
+              <span className={`status-dot ${!serverStatus ? 'is-checking' : isServerRestarting ? 'is-warning' : isServerOnline ? 'is-online' : 'is-offline'}`} />
+              <div>
+                <strong>Игровой сервер</strong>
+                <p>{serverStatusText}</p>
+              </div>
+            </div>
+            <div className="status-popup-row">
+              <span className={`status-dot ${authStatus?.online ? 'is-online' : authStatus ? 'is-offline' : 'is-checking'}`} />
+              <div>
+                <strong>Сервер авторизации</strong>
+                <p>{authStatusText}</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       <div className="launcher-grid">
         <Sidebar
@@ -370,6 +449,14 @@ export function App() {
                     >
                       папка mods
                     </button>
+
+                    <button
+                      type="button"
+                      className="launch-options-folder-button"
+                      onClick={() => void launcher.openGameFolder()}
+                    >
+                      корень игры
+                    </button>
                   </div>
                 ) : null}
               </div>
@@ -435,6 +522,10 @@ export function App() {
           config={config}
           settings={settings}
           onRamChange={(value) => void saveSettingsPatch({ allocatedRamMb: value })}
+          onRamReset={() => void saveSettingsPatch({
+            allocatedRamMb: config.minecraft.recommendedRamMb,
+            ramConfiguredManually: false,
+          })}
           onToggleHideLauncher={(value) => void saveSettingsPatch({ hideLauncherOnGameStart: value })}
           onToggleCloseLauncher={(value) => void saveSettingsPatch({ closeLauncherWhenGameCloses: value })}
           onClose={() => setSelectedView('home')}
@@ -445,7 +536,6 @@ export function App() {
         <AuthDialog
           mode={selectedView}
           settings={settings}
-          authStatus={authStatus}
           accountProfile={accountProfile}
           onLogin={loginAccount}
           onRegister={registerAccount}
@@ -468,8 +558,12 @@ export function App() {
                   <li key={playerName}>{playerName}</li>
                 ))}
               </ul>
-            ) : (
+            ) : serverStatus?.online && serverStatus.playersOnline === 0 ? (
+              <p>На сервере пусто.</p>
+            ) : serverStatus?.online ? (
               <p>Список игроков сейчас недоступен.</p>
+            ) : (
+              <p>Сервер остановлен.</p>
             )}
           </section>
         </div>

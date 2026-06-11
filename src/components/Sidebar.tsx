@@ -29,13 +29,14 @@ export function Sidebar(props: SidebarProps) {
   } = props;
   const isLoggedIn = Boolean(settings.username.trim() && settings.authToken);
   const statusHeadline = serverStatus?.displayText ?? '...';
+  const isServerRestarting = serverStatus?.serverState === 'restarting';
   const hasPlayerCounts = typeof serverStatus?.playersOnline === 'number'
     && typeof serverStatus.maxPlayers === 'number';
-  const statusDetail = serverStatus?.online
-    ? hasPlayerCounts
-      ? `Игроков в сети: ${serverStatus.playersOnline}/${serverStatus.maxPlayers}`
-      : serverStatus.error ?? 'Сервер отвечает, онлайн уточняется...'
-    : serverStatus?.error ?? 'Нет данных о состоянии сервера';
+  const statusDetail = isServerRestarting
+    ? 'Сервер перезагружается'
+    : hasPlayerCounts
+    ? `Игроков в сети: ${serverStatus?.playersOnline}/${serverStatus?.maxPlayers}`
+    : serverStatus?.error ?? 'Сервер отвечает, онлайн уточняется...';
 
   return (
     <aside className="sidebar">
@@ -97,23 +98,29 @@ export function Sidebar(props: SidebarProps) {
       </nav>
 
       <div className="sidebar-main">
-        <section className="sidebar-status">
-          <p className="sidebar-caption">ТЕКУЩИЙ ОНЛАЙН</p>
-          <strong className={`online-value ${serverStatus?.online ? 'is-online' : 'is-muted'}`}>
-            {statusHeadline}
-          </strong>
-          <div className="status-row">
-            <span>{statusDetail}</span>
-          </div>
-          <button
-            type="button"
-            className="players-list-button"
-            onClick={onOpenPlayers}
-            disabled={!serverStatus?.online}
-          >
-            Игроки
-          </button>
-        </section>
+        {serverStatus?.online ? (
+          <section className="sidebar-status">
+            <p className="sidebar-caption">ТЕКУЩИЙ ОНЛАЙН</p>
+            <strong className="online-value is-online">
+              {statusHeadline}
+            </strong>
+            <div className="status-row">
+              <span>{statusDetail}</span>
+            </div>
+            <button
+              type="button"
+              className="players-list-button"
+              onClick={onOpenPlayers}
+            >
+              Игроки
+            </button>
+          </section>
+        ) : (
+          <section className="sidebar-status sidebar-status-offline">
+            <span className="sidebar-offline-mark" />
+            <strong className="online-value is-muted">Сервер остановлен</strong>
+          </section>
+        )}
       </div>
     </aside>
   );

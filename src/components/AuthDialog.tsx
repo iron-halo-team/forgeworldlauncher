@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type {
-  AuthServerStatusPayload,
   LauncherAccountProfile,
   LauncherSettings,
   SidebarView,
@@ -10,7 +9,6 @@ import { GlyphIcon } from './icons';
 interface AuthDialogProps {
   mode: Extract<SidebarView, 'login' | 'register' | 'profile'>;
   settings: LauncherSettings;
-  authStatus: AuthServerStatusPayload | null;
   accountProfile: LauncherAccountProfile | null;
   onLogin: (username: string, password: string) => Promise<void>;
   onRegister: (username: string, password: string, email?: string) => Promise<void>;
@@ -50,6 +48,46 @@ const CAPTCHA_CHALLENGES: CaptchaChallenge[] = [
   {
     question: 'В башне 6 свечей, две погасли. Сколько свечей еще горит?',
     answers: ['4', 'четыре'],
+  },
+  {
+    question: 'Алхимик смешал 1 лунный порошок и 4 искры. Сколько ингредиентов в чаше?',
+    answers: ['5', 'пять'],
+  },
+  {
+    question: 'На стене крепости 7 факелов, страж погасил 2. Сколько факелов горит?',
+    answers: ['5', 'пять'],
+  },
+  {
+    question: 'Введите металл, из которого куют простой меч: железо',
+    answers: ['железо'],
+  },
+  {
+    question: 'У ведьмы было 9 трав, 3 ушли в зелье. Сколько трав осталось?',
+    answers: ['6', 'шесть'],
+  },
+  {
+    question: 'Дракон охранял 2 сундука, гном принес еще 2. Сколько сундуков стало?',
+    answers: ['4', 'четыре'],
+  },
+  {
+    question: 'Введите слово печати: пепел',
+    answers: ['пепел'],
+  },
+  {
+    question: 'В караване 3 мага и 2 рыцаря. Сколько путников идет к воротам?',
+    answers: ['5', 'пять'],
+  },
+  {
+    question: 'На алтаре 8 кристаллов, один раскололся. Сколько целых кристаллов осталось?',
+    answers: ['7', 'семь'],
+  },
+  {
+    question: 'Сова принесла 2 письма утром и 3 ночью. Сколько писем у архивариуса?',
+    answers: ['5', 'пять'],
+  },
+  {
+    question: 'Введите имя хранителя кузни: мастер',
+    answers: ['мастер'],
   },
 ];
 
@@ -132,7 +170,6 @@ export function AuthDialog(props: AuthDialogProps) {
   const {
     mode,
     settings,
-    authStatus,
     accountProfile,
     onLogin,
     onRegister,
@@ -159,7 +196,6 @@ export function AuthDialog(props: AuthDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isProfile = mode === 'profile';
   const isRegister = mode === 'register';
-  const isOnline = authStatus?.online ?? true;
 
   useEffect(() => {
     setUsername(settings.username);
@@ -185,11 +221,6 @@ export function AuthDialog(props: AuthDialogProps) {
   const submit = async () => {
     setError('');
     setNotice('');
-
-    if (!isOnline) {
-      setError('Нет подключения к интернету или сервер авторизации недоступен.');
-      return;
-    }
 
     if (!username.trim()) {
       setError('Укажите ник игрока.');
@@ -330,11 +361,6 @@ export function AuthDialog(props: AuthDialogProps) {
           <button type="button" className="icon-button" onClick={onClose} aria-label="Закрыть окно входа">
             <GlyphIcon name="close" />
           </button>
-        </div>
-
-        <div className={`auth-network-note ${isOnline ? 'is-online' : 'is-offline'}`}>
-          <span />
-          <p>{authStatus?.message ?? 'Проверяем сервер авторизации...'}</p>
         </div>
 
         {isProfile ? (

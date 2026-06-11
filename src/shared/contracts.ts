@@ -18,6 +18,9 @@ export interface LauncherStaticConfig {
     defaultRamMb: number;
     minimumRamMb: number;
     maximumRamMb: number;
+    recommendedRamMb: number;
+    safeMaximumRamMb: number;
+    deviceTotalRamMb: number;
     minimumLaunchRamMb: number;
     directConnectOnLaunch: boolean;
     server: {
@@ -82,6 +85,7 @@ export interface LauncherSettings {
   authToken: string;
   authTokenExpiresAt: string;
   allocatedRamMb: number;
+  ramConfiguredManually: boolean;
   hideLauncherOnGameStart: boolean;
   closeLauncherWhenGameCloses: boolean;
   directConnectOnLaunch: boolean;
@@ -142,6 +146,7 @@ export interface ServerStatusPayload {
   maxPlayers?: number;
   latencyMs?: number;
   players?: string[];
+  serverState?: 'online' | 'offline' | 'restarting';
   error?: string;
 }
 

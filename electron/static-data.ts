@@ -1,14 +1,12 @@
 import { readJson } from 'fs-extra';
+import os from 'node:os';
 import { z } from 'zod';
 import type {
   LauncherContent,
   LauncherStaticConfig,
   LauncherUpdateInfo,
 } from '../src/shared/contracts';
-import {
-  getLauncherConfigPath,
-  getLauncherContentPath,
-} from './paths';
+import { getLauncherConfigPath } from './paths';
 
 const staticConfigSchema = z.object({
   appId: z.string(),
@@ -91,14 +89,91 @@ const updateInfoSchema = z.object({
   downloadUrl: z.string().url().optional(),
 });
 
+type StaticConfigInput = z.infer<typeof staticConfigSchema>;
+
 export async function readStaticConfig(): Promise<LauncherStaticConfig> {
   const raw = await readJson(getLauncherConfigPath());
-  return staticConfigSchema.parse(raw);
+  return applyDeviceMemoryLimits(staticConfigSchema.parse(raw));
 }
 
-export async function readLauncherContent(): Promise<LauncherContent> {
-  const raw = await readJson(getLauncherContentPath());
-  return parseLauncherContent(raw);
+function roundDownToStep(value: number, step: number) {
+  return Math.max(step, Math.floor(value / step) * step);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getRecommendedRam(totalRamMb: number) {
+  if (totalRamMb <= 8192) {
+    return 4096;
+  }
+
+  if (totalRamMb <= 12288) {
+    return 5120;
+  }
+
+  if (totalRamMb <= 24576) {
+    return 6144;
+  }
+
+  return 8192;
+}
+
+function getMaximumRam(totalRamMb: number, config: StaticConfigInput) {
+  const reserveRamMb = totalRamMb <= 8192
+    ? 1024
+    : totalRamMb <= 16384
+      ? 2048
+      : totalRamMb <= 32768
+        ? 4096
+        : 6144;
+  const deviceMaximumRamMb = roundDownToStep(totalRamMb - reserveRamMb, 512);
+
+  return clamp(
+    deviceMaximumRamMb,
+    config.minecraft.minimumRamMb,
+    config.minecraft.maximumRamMb,
+  );
+}
+
+function getSafeMaximumRam(totalRamMb: number, config: StaticConfigInput) {
+  const recommendedRamMb = getRecommendedRam(totalRamMb);
+  const safeMaximumRamMb = roundDownToStep(totalRamMb * 0.75, 512);
+
+  return clamp(
+    Math.max(recommendedRamMb, safeMaximumRamMb),
+    config.minecraft.minimumRamMb,
+    getMaximumRam(totalRamMb, config),
+  );
+}
+
+function applyDeviceMemoryLimits(config: StaticConfigInput): LauncherStaticConfig {
+  const totalRamMb = Math.floor(os.totalmem() / 1024 / 1024);
+  const maximumRamMb = getMaximumRam(totalRamMb, config);
+  const recommendedRamMb = clamp(
+    Math.min(config.minecraft.defaultRamMb, getRecommendedRam(totalRamMb)),
+    config.minecraft.minimumRamMb,
+    maximumRamMb,
+  );
+  const safeMaximumRamMb = getSafeMaximumRam(totalRamMb, config);
+  const defaultRamMb = clamp(
+    recommendedRamMb,
+    config.minecraft.minimumRamMb,
+    maximumRamMb,
+  );
+
+  return {
+    ...config,
+    minecraft: {
+      ...config.minecraft,
+      defaultRamMb: roundDownToStep(defaultRamMb, 512),
+      maximumRamMb,
+      recommendedRamMb: roundDownToStep(recommendedRamMb, 512),
+      safeMaximumRamMb,
+      deviceTotalRamMb: totalRamMb,
+    },
+  };
 }
 
 export function parseLauncherContent(raw: unknown): LauncherContent {

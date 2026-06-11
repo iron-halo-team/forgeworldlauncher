@@ -64,9 +64,11 @@ async function isNewerThan(sourcePath: string, targetPath: string) {
 
 function run(command: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
+    const needsWindowsShell = process.platform === 'win32'
+      && command.toLowerCase().endsWith('.cmd');
     const child = spawn(command, args, {
       stdio: 'inherit',
-      shell: process.platform === 'win32',
+      shell: needsWindowsShell,
     });
 
     child.once('error', reject);

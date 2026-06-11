@@ -11,12 +11,12 @@ const EN_US = { lang: 1033, codepage: 1200 };
 const VERSION_STRINGS = {
   CompanyName: 'Iron Halo team',
   FileDescription: 'Official Forge World launcher',
-  FileVersion: '3.0.0',
+  FileVersion: '3.1.0',
   InternalName: 'Forge World Launcher',
   LegalCopyright: 'Iron Halo team',
   OriginalFilename: 'Forge World Launcher.exe',
   ProductName: 'Forge World Launcher',
-  ProductVersion: '3.0',
+  ProductVersion: '3.1',
 };
 
 function sleep(ms) {
@@ -61,8 +61,8 @@ function patchWindowsMetadata(executablePath, overrides = {}) {
   }
 
   versionInfo.replaceAvailableLanguages([RU_RU]);
-  versionInfo.setFileVersion(3, 0, 0, 0, RU_RU.lang);
-  versionInfo.setProductVersion(3, 0, 0, 0, RU_RU.lang);
+  versionInfo.setFileVersion(3, 1, 0, 0, RU_RU.lang);
+  versionInfo.setProductVersion(3, 1, 0, 0, RU_RU.lang);
   versionInfo.removeAllStringValues(EN_US);
   versionInfo.setStringValues(RU_RU, { ...VERSION_STRINGS, ...overrides }, true);
   versionInfo.outputToResourceEntries(res.entries);

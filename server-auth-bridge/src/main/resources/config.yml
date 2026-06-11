@@ -8,6 +8,8 @@ http:
   enabled: true
   bind-host: "0.0.0.0"
   port: 25833
+  backlog: 64
+  threads: 12
   public-base-url: "http://f10.joinserver.xyz:25833"
   trust-proxy-headers: false
   cors-origin: "*"

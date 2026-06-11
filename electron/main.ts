@@ -10,6 +10,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  Notification,
   screen,
   shell,
 } from 'electron';
@@ -53,7 +54,6 @@ import {
 import { fetchServerStatus } from './server-status';
 import {
   parseLauncherContent,
-  readLauncherContent,
   readStaticConfig,
 } from './static-data';
 import { fetchAvailableUpdate } from './update-check';
@@ -70,15 +70,36 @@ let lastUpdateInfo: LauncherUpdateInfo | null = null;
 let lastAuthStatus: AuthServerStatusPayload | null = null;
 let lastLauncherContent: LauncherContent | null = null;
 let statusInterval: NodeJS.Timeout | null = null;
+let updateInterval: NodeJS.Timeout | null = null;
 let contentInterval: NodeJS.Timeout | null = null;
 let isStatusRefreshRunning = false;
+let isUpdateRefreshRunning = false;
 let isContentRefreshRunning = false;
-let serverStatusFailureCount = 0;
-let authStatusFailureCount = 0;
-let lastServerOnlineAt = 0;
-let lastAuthOnlineAt = 0;
 let lastContentFetchErrorAt = 0;
 let lastGitHubContentEtag = '';
+let serverOfflineCandidateCount = 0;
+let authOfflineCandidateCount = 0;
+let serverOfflineCandidateStartedAt = 0;
+let authOfflineCandidateStartedAt = 0;
+let lastNotifiedServerState: ServerLifecycleState | null = null;
+let knownNewsIds = new Set<string>();
+let knownTimelineIds = new Set<string>();
+let hasInitializedRemoteContentIds = false;
+
+type ServerLifecycleState = 'online' | 'offline' | 'restarting';
+
+const SERVER_OFFLINE_CONFIRMATION_POLLS = 3;
+const SERVER_OFFLINE_CONFIRMATION_MS = 12_000;
+const AUTH_OFFLINE_CONFIRMATION_POLLS = 3;
+const AUTH_OFFLINE_CONFIRMATION_MS = 10_000;
+
+const EMPTY_LAUNCHER_CONTENT: LauncherContent = {
+  newsTitle: 'НОВОСТИ',
+  timelineTitle: 'ИСТОРИЯ МИРА',
+  timelineSubtitle: '',
+  news: [],
+  timeline: [],
+};
 
 function writeLog(level: 'INFO' | 'ERROR', message: string, error?: unknown) {
   try {
@@ -148,12 +169,9 @@ function withFallback<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
 }
 
 async function loadBootstrap(): Promise<LauncherBootstrap> {
-  const [config, localContent] = await Promise.all([
-    readStaticConfig(),
-    readLauncherContent(),
-  ]);
+  const config = await readStaticConfig();
   if (!lastLauncherContent) {
-    lastLauncherContent = localContent;
+    lastLauncherContent = EMPTY_LAUNCHER_CONTENT;
   }
   const settings = await loadSettings(config);
   const bundledDistributionDirectory = getBundledDistributionDirectory();
@@ -180,6 +198,17 @@ async function loadBootstrap(): Promise<LauncherBootstrap> {
     authStatus: lastAuthStatus,
     launchState,
   };
+}
+
+function showLauncherNotification(body: string) {
+  if (!Notification.isSupported()) {
+    return;
+  }
+
+  new Notification({
+    title: 'Forge World',
+    body,
+  }).show();
 }
 
 function getCacheBustedUrl(url: string) {
@@ -385,6 +414,7 @@ async function refreshLauncherContent(config: LauncherStaticConfig) {
       return;
     }
 
+    notifyLauncherContentChanges(remoteContent);
     lastLauncherContent = remoteContent;
     broadcast(IPC_CHANNELS.contentUpdate, remoteContent);
     lastContentFetchErrorAt = 0;
@@ -400,55 +430,128 @@ async function refreshLauncherContent(config: LauncherStaticConfig) {
   }
 }
 
-function stabilizeServerStatus(nextStatus: ServerStatusPayload | null): ServerStatusPayload | null {
-  const now = Date.now();
+function rememberLauncherContentIds(content: LauncherContent) {
+  knownNewsIds = new Set(content.news.map((item) => item.id));
+  knownTimelineIds = new Set(content.timeline.map((item) => item.id));
+}
 
-  if (nextStatus?.online) {
-    serverStatusFailureCount = 0;
-    lastServerOnlineAt = now;
+function notifyLauncherContentChanges(nextContent: LauncherContent) {
+  if (!hasInitializedRemoteContentIds) {
+    hasInitializedRemoteContentIds = true;
+    rememberLauncherContentIds(nextContent);
+    return;
+  }
+
+  const newNews = nextContent.news.filter((item) => !knownNewsIds.has(item.id));
+  const newEvents = nextContent.timeline.filter((item) => !knownTimelineIds.has(item.id));
+
+  if (newNews.length === 1) {
+    showLauncherNotification(`Новая новость: ${newNews[0].title}`);
+  } else if (newNews.length > 1) {
+    showLauncherNotification(`Добавлено новостей: ${newNews.length}`);
+  }
+
+  if (newEvents.length === 1) {
+    showLauncherNotification(`Новое событие истории: ${newEvents[0].title}`);
+  } else if (newEvents.length > 1) {
+    showLauncherNotification(`Добавлено событий истории: ${newEvents.length}`);
+  }
+
+  rememberLauncherContentIds(nextContent);
+}
+
+function getServerLifecycleState(status: ServerStatusPayload | null): ServerLifecycleState {
+  if (status?.serverState === 'restarting') {
+    return 'restarting';
+  }
+
+  return status?.online ? 'online' : 'offline';
+}
+
+function stabilizeServerStatus(nextStatus: ServerStatusPayload | null): ServerStatusPayload | null {
+  if (!nextStatus) {
+    return lastServerStatus;
+  }
+
+  if (nextStatus.online || nextStatus.serverState === 'restarting') {
+    serverOfflineCandidateCount = 0;
+    serverOfflineCandidateStartedAt = 0;
     return nextStatus;
   }
 
-  serverStatusFailureCount += 1;
-  if (
-    lastServerStatus?.online
-    && lastServerOnlineAt > 0
-    && now - lastServerOnlineAt < 90_000
-    && serverStatusFailureCount < 4
-  ) {
-    return {
-      ...lastServerStatus,
-      error: 'Сервер отвечает нестабильно, статус перепроверяется...',
-    };
+  const wasServerAlive = lastServerStatus?.online || lastServerStatus?.serverState === 'restarting';
+  if (!wasServerAlive) {
+    serverOfflineCandidateStartedAt = 0;
+    return nextStatus;
   }
 
+  const now = Date.now();
+  if (!serverOfflineCandidateStartedAt) {
+    serverOfflineCandidateStartedAt = now;
+  }
+
+  serverOfflineCandidateCount += 1;
+  if (
+    serverOfflineCandidateCount < SERVER_OFFLINE_CONFIRMATION_POLLS
+    || now - serverOfflineCandidateStartedAt < SERVER_OFFLINE_CONFIRMATION_MS
+  ) {
+    return lastServerStatus;
+  }
+
+  serverOfflineCandidateStartedAt = 0;
   return nextStatus;
 }
 
 function stabilizeAuthStatus(nextStatus: AuthServerStatusPayload): AuthServerStatusPayload {
-  const now = Date.now();
-
   if (nextStatus.online) {
-    authStatusFailureCount = 0;
-    lastAuthOnlineAt = now;
+    authOfflineCandidateCount = 0;
+    authOfflineCandidateStartedAt = 0;
     return nextStatus;
   }
 
-  authStatusFailureCount += 1;
+  const now = Date.now();
+  if (!authOfflineCandidateStartedAt) {
+    authOfflineCandidateStartedAt = now;
+  }
+
+  authOfflineCandidateCount += 1;
   if (
     lastAuthStatus?.online
-    && lastAuthOnlineAt > 0
-    && now - lastAuthOnlineAt < 90_000
-    && authStatusFailureCount < 4
+    && (
+      authOfflineCandidateCount < AUTH_OFFLINE_CONFIRMATION_POLLS
+      || now - authOfflineCandidateStartedAt < AUTH_OFFLINE_CONFIRMATION_MS
+    )
   ) {
     return {
       ...lastAuthStatus,
       checkedAt: nextStatus.checkedAt,
-      message: 'Сервер авторизации перепроверяется...',
     };
   }
 
+  authOfflineCandidateStartedAt = 0;
   return nextStatus;
+}
+
+function notifyServerLifecycle(status: ServerStatusPayload | null) {
+  const nextState = getServerLifecycleState(status);
+  if (lastNotifiedServerState === null) {
+    lastNotifiedServerState = nextState;
+    return;
+  }
+
+  if (nextState === lastNotifiedServerState) {
+    return;
+  }
+
+  lastNotifiedServerState = nextState;
+
+  const body = nextState === 'online'
+    ? 'Сервер запущен'
+    : nextState === 'restarting'
+      ? 'Сервер перезагружается'
+      : 'Сервер остановлен';
+
+  showLauncherNotification(body);
 }
 
 async function refreshAuthStatus(config: LauncherStaticConfig) {
@@ -461,14 +564,14 @@ async function refreshAuthStatus(config: LauncherStaticConfig) {
   const nextStatus = await withFallback(
     checkLauncherAuthStatus(config),
     fallbackAuthStatus,
-    6000,
+    5000,
   );
 
   lastAuthStatus = stabilizeAuthStatus(nextStatus);
   return lastAuthStatus;
 }
 
-async function refreshStatusAndUpdates(config: LauncherStaticConfig) {
+async function refreshStatusAndAuth(config: LauncherStaticConfig) {
   if (isStatusRefreshRunning) {
     return;
   }
@@ -477,23 +580,35 @@ async function refreshStatusAndUpdates(config: LauncherStaticConfig) {
   const fallbackServerStatus: ServerStatusPayload = {
     online: false,
     displayText: 'OFFLINE',
-    error: 'Не удалось получить статус сервера.',
+    serverState: 'offline',
+    error: 'Сервер остановлен',
   };
 
   try {
-    const [serverStatus, updateInfo] = await Promise.all([
-      withFallback(fetchServerStatus(config), fallbackServerStatus, 7000),
-      withFallback(fetchAvailableUpdate(config), null, 5000),
-      refreshAuthStatus(config),
-    ]);
+    const serverStatus = await withFallback(fetchServerStatus(config), fallbackServerStatus, 6_000);
 
     lastServerStatus = stabilizeServerStatus(serverStatus);
-    lastUpdateInfo = updateInfo;
 
     broadcast(IPC_CHANNELS.serverStatus, lastServerStatus);
-    broadcast(IPC_CHANNELS.updateInfo, updateInfo);
+    notifyServerLifecycle(lastServerStatus);
   } finally {
     isStatusRefreshRunning = false;
+  }
+}
+
+async function refreshUpdateInfo(config: LauncherStaticConfig) {
+  if (isUpdateRefreshRunning) {
+    return;
+  }
+
+  isUpdateRefreshRunning = true;
+
+  try {
+    const updateInfo = await withFallback(fetchAvailableUpdate(config), null, 5000);
+    lastUpdateInfo = updateInfo;
+    broadcast(IPC_CHANNELS.updateInfo, updateInfo);
+  } finally {
+    isUpdateRefreshRunning = false;
   }
 }
 
@@ -502,10 +617,21 @@ async function startBackgroundRefresh(config: LauncherStaticConfig) {
     clearInterval(statusInterval);
   }
 
-  void refreshStatusAndUpdates(config);
+  void refreshStatusAndAuth(config);
   statusInterval = setInterval(() => {
-    void refreshStatusAndUpdates(config);
-  }, 5_000);
+    void refreshStatusAndAuth(config);
+  }, 1_000);
+}
+
+async function startUpdateRefresh(config: LauncherStaticConfig) {
+  if (updateInterval) {
+    clearInterval(updateInterval);
+  }
+
+  void refreshUpdateInfo(config);
+  updateInterval = setInterval(() => {
+    void refreshUpdateInfo(config);
+  }, 60_000);
 }
 
 async function startContentRefresh(config: LauncherStaticConfig) {
@@ -603,6 +729,7 @@ async function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.bootstrap, async () => {
     const bootstrap = await loadBootstrap();
     void startBackgroundRefresh(bootstrap.config);
+    void startUpdateRefresh(bootstrap.config);
     void startContentRefresh(bootstrap.config);
     return bootstrap;
   });
@@ -792,8 +919,9 @@ async function registerIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.refreshServerStatus, async () => {
     const config = await readStaticConfig();
-    lastServerStatus = await fetchServerStatus(config);
+    lastServerStatus = stabilizeServerStatus(await fetchServerStatus(config));
     broadcast(IPC_CHANNELS.serverStatus, lastServerStatus);
+    notifyServerLifecycle(lastServerStatus);
     return lastServerStatus;
   });
 
@@ -828,6 +956,10 @@ app.on('before-quit', () => {
   if (statusInterval) {
     clearInterval(statusInterval);
     statusInterval = null;
+  }
+  if (updateInterval) {
+    clearInterval(updateInterval);
+    updateInterval = null;
   }
   if (contentInterval) {
     clearInterval(contentInterval);

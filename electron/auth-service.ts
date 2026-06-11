@@ -121,7 +121,7 @@ async function requestTargetJson<T>(
     const transport = url.protocol === 'https:' ? https : http;
     const headers: Record<string, string> = {
       accept: 'application/json',
-      'user-agent': 'ForgeWorldLauncher/3.0',
+      'user-agent': 'ForgeWorldLauncher/3.1',
     };
 
     if (payload) {
@@ -216,7 +216,7 @@ async function requestFirstHealthyJson<T>(
   }
 
   const targets = createRequestTargets(config, path);
-  const timeoutMs = Math.min(getTimeoutMs(config), 5000);
+  const timeoutMs = Math.min(getTimeoutMs(config), 8000);
 
   return new Promise<T>((resolve, reject) => {
     let pendingCount = targets.length;

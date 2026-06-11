@@ -510,6 +510,31 @@ button {
   align-content: start;
 }
 
+.sidebar-status-offline {
+  min-height: 96px;
+  align-content: center;
+  justify-items: start;
+  gap: 10px;
+  background:
+    linear-gradient(90deg, rgba(220, 132, 127, 0.055), transparent 78%),
+    rgba(255, 255, 255, 0.012);
+}
+
+.sidebar-status-offline .online-value {
+  max-width: 100%;
+  font-size: clamp(0.92rem, 1.05vw, 1.08rem);
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  color: #c6cbd4;
+}
+
+.sidebar-offline-mark {
+  width: 34px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(220, 132, 127, 0.8), transparent);
+  opacity: 0.75;
+}
+
 .online-value {
   font-family: 'Minecraft UI', sans-serif;
   min-width: 0;
@@ -1479,6 +1504,39 @@ button {
   opacity: 0.86;
 }
 
+.settings-warning.is-alert {
+  padding: 9px 10px;
+  border: 1px solid rgba(220, 132, 127, 0.22);
+  background: rgba(88, 33, 36, 0.18);
+}
+
+.settings-memory-summary {
+  color: #c4cad3;
+  opacity: 0.76;
+}
+
+.settings-default-button {
+  justify-self: end;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(220, 132, 127, 0.26);
+  background: rgba(255, 255, 255, 0.018);
+  color: #e2b2af;
+  font-family: 'Minecraft UI', sans-serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.settings-default-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(220, 132, 127, 0.44);
+  background: rgba(220, 132, 127, 0.08);
+}
+
 .settings-section h3 {
   font-size: 1.02rem;
   line-height: 1.14;
@@ -1591,11 +1649,11 @@ button {
   color: #aab2bf;
 }
 
-.auth-status-indicator {
+.server-status-indicator {
   position: fixed;
   top: calc(var(--shell-pad) + 9px);
   left: calc(var(--shell-pad) + 14px);
-  z-index: 6;
+  z-index: 35;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1604,11 +1662,23 @@ button {
   border: 1px solid rgba(111, 118, 130, 0.16);
   background: rgba(7, 10, 14, 0.58);
   color: #87909c;
-  pointer-events: none;
   opacity: 0.78;
+  -webkit-app-region: no-drag;
+  transition:
+    opacity 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
 }
 
-.auth-status-indicator span,
+.server-status-indicator:hover {
+  opacity: 1;
+  border-color: rgba(220, 132, 127, 0.28);
+  background: rgba(7, 10, 14, 0.86);
+  color: #dce2ea;
+}
+
+.server-status-indicator span,
 .auth-network-note span {
   width: 7px;
   height: 7px;
@@ -1617,21 +1687,107 @@ button {
   box-shadow: 0 0 14px rgba(127, 136, 148, 0.3);
 }
 
-.auth-status-indicator strong {
+.server-status-indicator strong {
   font-size: 0.58rem;
   letter-spacing: 0.16em;
 }
 
-.auth-status-indicator.is-online span,
+.server-status-indicator.is-online span,
 .auth-network-note.is-online span {
   background: #77c989;
   box-shadow: 0 0 14px rgba(119, 201, 137, 0.35);
 }
 
-.auth-status-indicator.is-offline span,
+.server-status-indicator.is-warning span {
+  background: #d9b86b;
+  box-shadow: 0 0 14px rgba(217, 184, 107, 0.36);
+}
+
+.server-status-indicator.is-checking span {
+  background: #8f98a5;
+  box-shadow: 0 0 14px rgba(143, 152, 165, 0.28);
+}
+
+.server-status-indicator.is-offline span,
 .auth-network-note.is-offline span {
   background: #dc847f;
   box-shadow: 0 0 14px rgba(220, 132, 127, 0.36);
+}
+
+.status-popup-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: transparent;
+}
+
+.status-popup {
+  position: absolute;
+  top: calc(var(--shell-pad) + 42px);
+  left: calc(var(--shell-pad) + 14px);
+  width: min(340px, calc(100vw - 48px));
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgba(111, 118, 130, 0.22);
+  background:
+    linear-gradient(180deg, rgba(9, 13, 18, 0.98), rgba(5, 8, 12, 0.98)),
+    radial-gradient(circle at top right, rgba(187, 95, 91, 0.12), transparent 44%);
+  box-shadow: var(--shadow);
+}
+
+.status-popup-row {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(111, 118, 130, 0.14);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.status-popup-row strong {
+  display: block;
+  color: #edf0f5;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+}
+
+.status-popup-row p {
+  margin: 4px 0 0;
+  color: #aab2bf;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #8f98a5;
+  box-shadow: 0 0 14px rgba(143, 152, 165, 0.28);
+}
+
+.status-dot.is-online {
+  background: #77c989;
+  box-shadow: 0 0 14px rgba(119, 201, 137, 0.35);
+}
+
+.status-dot.is-offline {
+  background: #dc847f;
+  box-shadow: 0 0 14px rgba(220, 132, 127, 0.36);
+}
+
+.status-dot.is-checking {
+  background: #d9b86b;
+  box-shadow: 0 0 14px rgba(217, 184, 107, 0.36);
+}
+
+.status-dot.is-warning {
+  background: #d9b86b;
+  box-shadow: 0 0 14px rgba(217, 184, 107, 0.36);
 }
 
 .auth-dialog {

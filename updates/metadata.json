@@ -1,7 +1,7 @@
 {
-  "latestVersion": "3.0",
-  "title": "Forge World Launcher 3.0",
-  "notes": "Актуальная публичная версия лаунчера.",
-  "publishedAt": "2026-05-15",
+  "latestVersion": "3.1",
+  "title": "Forge World Launcher 3.1",
+  "notes": "Техническое обновление стабильности: авторизация, статус сервера, список игроков и фоновая проверка обновлений.",
+  "publishedAt": "2026-05-31",
   "downloadUrl": "https://github.com/iron-halo-team/forgeworld/releases/latest"
 }
