@@ -2,7 +2,8 @@
 
 Официальный лаунчер Forge World для подготовленной сборки **NeoForge 1.21.1**.
 
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/4b648b01-f69c-48f5-8c87-51e9111c4483" />
+<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/bcb157e3-b67e-4b32-943a-a6212baf7cf6" />
+
 
 ## Возможности
 
