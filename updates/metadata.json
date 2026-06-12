@@ -1,6 +1,6 @@
 {
-  "latestVersion": "3.2",
-  "title": "Forge World Launcher 3.2",
+  "latestVersion": "3.1",
+  "title": "Forge World Launcher 3.1",
   "notes": "Техническое обновление стабильности: авторизация, статус сервера, список игроков и фоновая проверка обновлений.",
   "publishedAt": "2026-06-13",
   "downloadUrl": "https://github.com/iron-halo-team/forgeworldlauncher/releases/download/v3.1/Forge-World-Launcher-3.1.exe"
