@@ -3,6 +3,13 @@
   "timelineTitle": "ЛЕТОПИСЬ МИРА",
   "timelineSubtitle": "Исторические события",
   "news": [
+        {
+      "id": "update-3-1-0",
+      "title": "Лаунчер 3.1",
+      "date": "13.06.2026",
+      "text": "Обновление стабильности: авторизация, статус и фоновая проверка обновлений.",
+      "url": "https://github.com/iron-halo-team/forgeworld/wiki"
+    },
     {
       "id": "update-3-0-0",
       "title": "Обновление 3.0",
@@ -15,7 +22,7 @@
       "title": "Развитие лора",
       "date": "16.05.2026",
       "text": "Лор будет развиваться на нашей официальной странице WIKI. Следите за новостями и погружайтесь в историю мира.",
-      "url": "https://github.com/iron-halo-team/forgeworld/wiki"
+      "url": "https://forgeworld.online/"
     },
     {
       "id": "northern-frontier",
@@ -39,7 +46,7 @@
       "title": "ВЕЛИКАЯ ИМПЕРИЯ",
       "text": "На просторах мира царила Великая Империя, объединяя народы и культуры, со столицей Кайзеррехт",
       "icon": "crown",
-      "url": "https://github.com/iron-halo-team/forgeworld/wiki/Event-Great-Empire"
+      "url": "https://forgeworld.online/wiki/event-great-empire/"
     },
     {
       "id": "empire-fall",
@@ -47,7 +54,7 @@
       "title": "ИМПЕРИЯ ПАЛА",
       "text": "Спустя четыре века процветания, Империя пала. Войны, интриги и предательство разрушили её изнутри.",
       "icon": "banner",
-      "url": "https://github.com/iron-halo-team/forgeworld/wiki/Event-Empire-Fall"
+      "url": "https://forgeworld.online/wiki/empire-fall/"
     },
     {
       "id": "liork",
@@ -55,7 +62,7 @@
       "title": "ГРАЖДАНСКАЯ ВОЙНА КОАЛИЦИЙ",
       "text": "Бывшие содружества Империи распались на враждующие коалиции. Лиорк, один из них, стал символом сопротивления и надежды.",
       "icon": "crossed-blades",
-      "url": "https://github.com/iron-halo-team/forgeworld/wiki/Event-Coalition-Civil-War"
+      "url": "https://forgeworld.online/wiki/coalition-civil-war/"
     },
     {
       "id": "haimeit",
@@ -63,7 +70,7 @@
       "title": "ОСНОВАНИЕ ХАЙМЕЙТА",
       "text": "Новообразованная Коалиция Свободных Городов, создаёт город-библиотеку Хаймейт, ставший укрыв запретные знания.",
       "icon": "cathedral",
-      "url": "https://github.com/iron-halo-team/forgeworld/wiki/Event-Foundation-of-Haimeit"
+      "url": "https://forgeworld.online/wiki/foundation-haimeit/"
     },
     {
       "id": "shadow-event",
@@ -71,7 +78,7 @@
       "title": "ВЕЛИКАЯ ВОЙНА",
       "text": "Началась Великая Война, которая охватила весь мир. Государства борятся за власть в безопасном центре мира.",
       "icon": "ghost",
-      "url": "https://github.com/iron-halo-team/forgeworld/wiki/Event-Great-War"
+      "url": "https://forgeworld.online/wiki/great-war/"
     }
   ]
 }
