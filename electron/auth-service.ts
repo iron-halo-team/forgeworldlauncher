@@ -5,6 +5,8 @@ import type {
   LauncherAccountProfileResult,
   AuthServerStatusPayload,
   LauncherStaticConfig,
+  PasswordRecoveryStartResult,
+  PasswordRecoveryVerifyResult,
 } from '../src/shared/contracts';
 
 export interface RemoteAuthResult {
@@ -386,9 +388,42 @@ export function changeLauncherAccountPassword(
 
 export function startLauncherPasswordRecovery(
   config: LauncherStaticConfig,
+  identifier: string,
+) {
+  return requestJson<PasswordRecoveryStartResult>(config, '/auth/recovery/start/', {
+    identifier,
+  });
+}
+
+export function resendLauncherPasswordRecovery(
+  config: LauncherStaticConfig,
   username: string,
 ) {
-  return requestJson<RemoteSimpleResult>(config, '/auth/recovery/', {
+  return requestJson<PasswordRecoveryStartResult>(config, '/auth/recovery/resend/', {
     username,
+  });
+}
+
+export function verifyLauncherPasswordRecovery(
+  config: LauncherStaticConfig,
+  username: string,
+  code: string,
+) {
+  return requestJson<PasswordRecoveryVerifyResult>(config, '/auth/recovery/verify/', {
+    username,
+    code,
+  });
+}
+
+export function completeLauncherPasswordRecovery(
+  config: LauncherStaticConfig,
+  username: string,
+  resetToken: string,
+  newPassword: string,
+) {
+  return requestJson<RemoteSimpleResult>(config, '/auth/recovery/complete/', {
+    username,
+    resetToken,
+    newPassword,
   });
 }

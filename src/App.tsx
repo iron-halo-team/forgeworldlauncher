@@ -1,4 +1,4 @@
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import discordIcon from './assets/discord.png';
 import launchMenuClosedIcon from './assets/down.png';
 import githubIcon from './assets/github.png';
@@ -46,8 +46,11 @@ export function App() {
   const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false);
   const [isPlayersPopupOpen, setIsPlayersPopupOpen] = useState(false);
   const [isStatusPopupOpen, setIsStatusPopupOpen] = useState(false);
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState('');
   const [isBusy, startTransition] = useTransition();
   const [isLaunching, setIsLaunching] = useState(false);
+  const launchOptionsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -111,6 +114,34 @@ export function App() {
       unsubscribeContent();
     };
   }, [launcher]);
+
+  useEffect(() => {
+    const latestVersion = bootstrap?.updateInfo?.latestVersion;
+
+    if (latestVersion && latestVersion !== dismissedUpdateVersion) {
+      setIsUpdateDialogOpen(true);
+    }
+  }, [bootstrap?.updateInfo?.latestVersion, dismissedUpdateVersion]);
+
+  useEffect(() => {
+    if (!isLaunchMenuOpen) {
+      return undefined;
+    }
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target;
+
+      if (target instanceof Node && launchOptionsRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsLaunchMenuOpen(false);
+    };
+
+    window.addEventListener('mousedown', closeOnOutsideClick);
+
+    return () => window.removeEventListener('mousedown', closeOnOutsideClick);
+  }, [isLaunchMenuOpen]);
 
   useEffect(() => {
     if (!bootstrap?.config.auth.enabled) {
@@ -229,11 +260,6 @@ export function App() {
     await launcher.changeAccountPassword(currentPassword, newPassword);
   };
 
-  const recoverPassword = async (username: string) => {
-    const result = await launcher.startPasswordRecovery(username);
-    return result.message;
-  };
-
   const refreshVisibleStatuses = () => {
     void launcher.refreshServerStatus()
       .then((payload) => {
@@ -251,9 +277,32 @@ export function App() {
     }
   };
 
-  const openStatusPopup = () => {
-    setIsStatusPopupOpen(true);
-    refreshVisibleStatuses();
+  const toggleStatusPopup = () => {
+    setIsStatusPopupOpen((current) => {
+      const next = !current;
+
+      if (next) {
+        refreshVisibleStatuses();
+      }
+
+      return next;
+    });
+  };
+
+  const openLauncherUpdate = () => {
+    if (!updateInfo) {
+      return;
+    }
+
+    void launcher.openExternal(updateInfo.downloadUrl ?? config.update.downloadPage);
+  };
+
+  const dismissUpdateDialog = () => {
+    if (updateInfo?.latestVersion) {
+      setDismissedUpdateVersion(updateInfo.latestVersion);
+    }
+
+    setIsUpdateDialogOpen(false);
   };
 
   const launchGame = async () => {
@@ -327,15 +376,27 @@ export function App() {
         <WindowControls />
       </header>
 
-      <button
-        type="button"
-        className={`server-status-indicator ${statusIndicatorState}`}
-        onClick={openStatusPopup}
-        aria-label="Показать статус серверов"
-      >
-        <span />
-        <strong>{statusIndicatorLabel}</strong>
-      </button>
+      <div className="top-left-actions">
+        <button
+          type="button"
+          className={`server-status-indicator ${statusIndicatorState}`}
+          onClick={toggleStatusPopup}
+          aria-label="Показать статус серверов"
+        >
+          <span />
+          <strong>{statusIndicatorLabel}</strong>
+        </button>
+
+        {updateInfo ? (
+          <button
+            type="button"
+            className="launcher-update-button"
+            onClick={openLauncherUpdate}
+          >
+            Обновить
+          </button>
+        ) : null}
+      </div>
 
       {isStatusPopupOpen ? (
         <div className="status-popup-layer" role="presentation" onClick={() => setIsStatusPopupOpen(false)}>
@@ -354,6 +415,49 @@ export function App() {
                 <strong>Сервер авторизации</strong>
                 <p>{authStatusText}</p>
               </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {updateInfo && isUpdateDialogOpen ? (
+        <div className="update-dialog-layer" role="presentation" onClick={dismissUpdateDialog}>
+          <section
+            className="update-dialog"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="settings-heading">
+              <div>
+                <p className="eyebrow">FORGE WORLD LAUNCHER</p>
+                <h2>{updateInfo.title ?? `Вышла версия ${updateInfo.latestVersion}`}</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={dismissUpdateDialog}
+                aria-label="Закрыть окно обновления"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+
+            {updateInfo.notes ? (
+              <p className="update-dialog-note">{updateInfo.notes}</p>
+            ) : null}
+
+            <div className="update-dialog-actions">
+              <button type="button" className="ghost-button" onClick={openLauncherUpdate}>
+                Скачать обновление
+              </button>
+              <button
+                type="button"
+                className="ghost-button update-dialog-secondary"
+                onClick={dismissUpdateDialog}
+              >
+                Позже
+              </button>
             </div>
           </section>
         </div>
@@ -381,20 +485,6 @@ export function App() {
               ))}
             </div>
 
-            {updateInfo ? (
-              <div className="update-banner">
-                <strong>{updateInfo.title ?? `Вышла версия ${updateInfo.latestVersion}`}</strong>
-                {updateInfo.notes ? <p>{updateInfo.notes}</p> : null}
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => void launcher.openExternal(updateInfo.downloadUrl ?? config.update.downloadPage)}
-                >
-                  Скачать обновление
-                </button>
-              </div>
-            ) : null}
-
             {!distributionReady ? (
               <div className="error-banner">
                 <strong>Сборка ещё не упакована.</strong>
@@ -412,7 +502,7 @@ export function App() {
                 <span>{getPlayLabel(launchState)}</span>
               </button>
 
-              <div className="launch-options">
+              <div className="launch-options" ref={launchOptionsRef}>
                 <button
                   type="button"
                   className="launch-options-button"
@@ -528,6 +618,8 @@ export function App() {
           })}
           onToggleHideLauncher={(value) => void saveSettingsPatch({ hideLauncherOnGameStart: value })}
           onToggleCloseLauncher={(value) => void saveSettingsPatch({ closeLauncherWhenGameCloses: value })}
+          onToggleLaunchAtStartup={(value) => void saveSettingsPatch({ launchAtSystemStartup: value })}
+          onToggleMinimizeToTray={(value) => void saveSettingsPatch({ minimizeToTrayOnClose: value })}
           onClose={() => setSelectedView('home')}
         />
       ) : null}
@@ -543,7 +635,10 @@ export function App() {
           onRefreshProfile={refreshAccountProfile}
           onUpdateEmail={updateAccountEmail}
           onChangePassword={changeAccountPassword}
-          onRecoverPassword={recoverPassword}
+          onStartPasswordRecovery={(identifier) => launcher.startPasswordRecovery(identifier)}
+          onResendPasswordRecovery={(username) => launcher.resendPasswordRecovery(username)}
+          onVerifyPasswordRecovery={(username, code) => launcher.verifyPasswordRecovery(username, code)}
+          onCompletePasswordRecovery={(username, resetToken, newPassword) => launcher.completePasswordRecovery(username, resetToken, newPassword)}
           onClose={() => setSelectedView('home')}
         />
       ) : null}

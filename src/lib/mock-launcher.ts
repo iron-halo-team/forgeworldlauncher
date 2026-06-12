@@ -145,6 +145,8 @@ let mockSettings: LauncherSettings = {
   ramConfiguredManually: false,
   hideLauncherOnGameStart: true,
   closeLauncherWhenGameCloses: false,
+  launchAtSystemStartup: false,
+  minimizeToTrayOnClose: false,
   directConnectOnLaunch: true,
 };
 
@@ -291,9 +293,37 @@ export function getLauncherApi(): LauncherApi {
     },
     async startPasswordRecovery() {
       return {
-        ok: false,
-        message: 'К аккаунту не привязана почта. Для восстановления пароля обратитесь к администрации сервера.',
-        hasEmail: false,
+        ok: true,
+        message: 'Код восстановления отправлен на привязанную почту.',
+        username: mockSettings.username || 'Wayfarer',
+        maskedEmail: 'wa***@example.com',
+        cooldownSeconds: 60,
+        expiresInSeconds: 900,
+      };
+    },
+    async resendPasswordRecovery() {
+      return {
+        ok: true,
+        message: 'Новый код отправлен на привязанную почту.',
+        username: mockSettings.username || 'Wayfarer',
+        maskedEmail: 'wa***@example.com',
+        cooldownSeconds: 60,
+        expiresInSeconds: 900,
+      };
+    },
+    async verifyPasswordRecovery(username) {
+      return {
+        ok: true,
+        message: 'Код подтверждён. Введите новый пароль.',
+        username,
+        resetToken: 'mock-reset-token',
+        expiresInSeconds: 600,
+      };
+    },
+    async completePasswordRecovery() {
+      return {
+        ok: true,
+        message: 'Пароль успешно изменён.',
       };
     },
     async checkAuthStatus() {

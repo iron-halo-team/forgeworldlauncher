@@ -30,6 +30,27 @@ security:
   rate-limit-window-seconds: 60
   rate-limit-max-attempts: 8
 
+recovery:
+  enabled: true
+  code-length: 6
+  code-ttl-seconds: 900
+  resend-cooldown-seconds: 60
+  verified-token-ttl-seconds: 600
+  max-attempts: 5
+
+smtp:
+  enabled: false
+  host: ""
+  port: 587
+  ssl: false
+  starttls: true
+  auth: true
+  timeout-millis: 10000
+  username: ""
+  password: ""
+  from-email: ""
+  from-name: "Forge World"
+
 username:
   regex: "^[A-Za-z0-9_]{3,16}$"
 

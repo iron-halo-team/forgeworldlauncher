@@ -464,9 +464,13 @@ button {
   justify-content: center;
   width: 22px;
   height: 22px;
+  padding: 0;
   flex: 0 0 auto;
   border: 1px solid rgba(111, 118, 130, 0.22);
   color: #8f98a6;
+  font-family: 'Minecraft UI', sans-serif;
+  font-size: 0.72rem;
+  line-height: 1;
   outline: none;
 }
 
@@ -938,7 +942,6 @@ button {
   transform: none;
 }
 
-.update-banner,
 .error-banner {
   display: grid;
   gap: 8px;
@@ -948,11 +951,50 @@ button {
   background: rgba(187, 95, 91, 0.08);
 }
 
-.update-banner p,
 .error-banner p {
   margin: 0;
   color: #d9dfe8;
   line-height: 1.45;
+}
+
+.update-dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(1, 3, 6, 0.64);
+  backdrop-filter: blur(8px);
+}
+
+.update-dialog {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 22px 24px;
+  border: 1px solid rgba(111, 118, 130, 0.2);
+  background:
+    linear-gradient(180deg, rgba(10, 14, 20, 0.995), rgba(6, 9, 14, 0.995)),
+    radial-gradient(circle at top right, rgba(119, 201, 137, 0.12), transparent 40%);
+  box-shadow: var(--shadow);
+}
+
+.update-dialog-note {
+  margin: 0;
+  color: #c7cdd6;
+  line-height: 1.45;
+}
+
+.update-dialog-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.85fr);
+  gap: 10px;
+}
+
+.update-dialog-secondary {
+  color: #aab2bf;
+  border-color: rgba(111, 118, 130, 0.18);
 }
 
 .news-panel {
@@ -1470,6 +1512,32 @@ button {
   box-shadow: var(--shadow);
 }
 
+.settings-drawer,
+.auth-dialog,
+.players-popup {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(220, 132, 127, 0.48) rgba(255, 255, 255, 0.035);
+}
+
+.settings-drawer::-webkit-scrollbar,
+.auth-dialog::-webkit-scrollbar,
+.players-popup::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-drawer::-webkit-scrollbar-track,
+.auth-dialog::-webkit-scrollbar-track,
+.players-popup::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.settings-drawer::-webkit-scrollbar-thumb,
+.auth-dialog::-webkit-scrollbar-thumb,
+.players-popup::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(220, 132, 127, 0.6), rgba(120, 59, 65, 0.72));
+}
+
 .settings-heading,
 .settings-row {
   display: flex;
@@ -1478,9 +1546,22 @@ button {
   gap: 16px;
 }
 
+.settings-heading > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-heading .eyebrow {
+  font-size: 0.58rem;
+  line-height: 1;
+  letter-spacing: 0.22em;
+  color: rgba(140, 149, 163, 0.72);
+}
+
 .settings-heading h2 {
-  font-size: clamp(1.7rem, 2.2vw, 2.5rem);
-  line-height: 1.04;
+  font-size: clamp(1.48rem, 1.95vw, 2.18rem);
+  line-height: 1.02;
 }
 
 .settings-section {
@@ -1649,11 +1730,18 @@ button {
   color: #aab2bf;
 }
 
-.server-status-indicator {
+.top-left-actions {
   position: fixed;
   top: calc(var(--shell-pad) + 9px);
   left: calc(var(--shell-pad) + 14px);
   z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.server-status-indicator {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1663,7 +1751,7 @@ button {
   background: rgba(7, 10, 14, 0.58);
   color: #87909c;
   opacity: 0.78;
-  -webkit-app-region: no-drag;
+  white-space: nowrap;
   transition:
     opacity 140ms ease,
     border-color 140ms ease,
@@ -1690,6 +1778,30 @@ button {
 .server-status-indicator strong {
   font-size: 0.58rem;
   letter-spacing: 0.16em;
+}
+
+.launcher-update-button {
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgba(119, 201, 137, 0.22);
+  background: rgba(119, 201, 137, 0.08);
+  color: #a7dfb0;
+  font-size: 0.56rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.84;
+  transition:
+    transform 140ms ease,
+    opacity 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.launcher-update-button:hover {
+  transform: translateY(-1px);
+  opacity: 1;
+  border-color: rgba(119, 201, 137, 0.44);
+  background: rgba(119, 201, 137, 0.14);
 }
 
 .server-status-indicator.is-online span,
@@ -1859,6 +1971,13 @@ button {
   border-color: rgba(111, 118, 130, 0.14);
 }
 
+.captcha-refresh-icon {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 .auth-profile-card {
   padding-top: 4px;
 }
@@ -1892,6 +2011,11 @@ button {
   color: #c5ccd6;
 }
 
+.auth-profile-card .tooltip-anchor {
+  display: inline-flex;
+  margin-top: 0;
+}
+
 .auth-error {
   margin: 0;
   padding: 10px 12px;
@@ -1908,6 +2032,48 @@ button {
   background: rgba(119, 201, 137, 0.08);
   color: #c7f2d0;
   line-height: 1.35;
+}
+
+.auth-helper-text {
+  margin: 0;
+  color: rgba(197, 204, 214, 0.78);
+  line-height: 1.45;
+}
+
+.auth-warning-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(220, 132, 127, 0.28);
+  background: rgba(187, 95, 91, 0.065);
+  color: #ffd4d1;
+  line-height: 1.35;
+}
+
+.auth-warning-card p {
+  margin: 0;
+}
+
+.auth-warning-actions,
+.recovery-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.auth-secondary-button {
+  min-height: 42px;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+.recovery-card {
+  gap: 14px;
+}
+
+.recovery-back-button {
+  justify-self: center;
+  margin-top: 0;
 }
 
 .auth-inline-button {

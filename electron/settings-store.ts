@@ -14,6 +14,8 @@ const settingsPatchSchema = z.object({
   ramConfiguredManually: z.boolean().optional(),
   hideLauncherOnGameStart: z.boolean().optional(),
   closeLauncherWhenGameCloses: z.boolean().optional(),
+  launchAtSystemStartup: z.boolean().optional(),
+  minimizeToTrayOnClose: z.boolean().optional(),
   directConnectOnLaunch: z.boolean().optional(),
 });
 
@@ -26,6 +28,8 @@ function getDefaultSettings(config: LauncherStaticConfig): LauncherSettings {
     ramConfiguredManually: false,
     hideLauncherOnGameStart: true,
     closeLauncherWhenGameCloses: false,
+    launchAtSystemStartup: false,
+    minimizeToTrayOnClose: false,
     directConnectOnLaunch: config.minecraft.directConnectOnLaunch,
   };
 }

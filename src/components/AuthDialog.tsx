@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react';
 import type {
   LauncherAccountProfile,
   LauncherSettings,
+  PasswordRecoveryStartResult,
+  PasswordRecoveryVerifyResult,
   SidebarView,
 } from '../shared/contracts';
+import reloadCaptchaIcon from '../assets/reloadcapcha.png';
 import { GlyphIcon } from './icons';
 
 interface AuthDialogProps {
@@ -16,7 +19,10 @@ interface AuthDialogProps {
   onRefreshProfile: () => Promise<void>;
   onUpdateEmail: (email: string) => Promise<void>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  onRecoverPassword: (username: string) => Promise<string>;
+  onStartPasswordRecovery: (identifier: string) => Promise<PasswordRecoveryStartResult>;
+  onResendPasswordRecovery: (username: string) => Promise<PasswordRecoveryStartResult>;
+  onVerifyPasswordRecovery: (username: string, code: string) => Promise<PasswordRecoveryVerifyResult>;
+  onCompletePasswordRecovery: (username: string, resetToken: string, newPassword: string) => Promise<{ ok: boolean; message: string }>;
   onClose: () => void;
 }
 
@@ -31,6 +37,8 @@ interface PasswordInputProps {
   placeholder: string;
   onChange: (value: string) => void;
 }
+
+type RecoveryStep = 'none' | 'start' | 'code' | 'password' | 'done';
 
 const CAPTCHA_CHALLENGES: CaptchaChallenge[] = [
   {
@@ -177,7 +185,10 @@ export function AuthDialog(props: AuthDialogProps) {
     onRefreshProfile,
     onUpdateEmail,
     onChangePassword,
-    onRecoverPassword,
+    onStartPasswordRecovery,
+    onResendPasswordRecovery,
+    onVerifyPasswordRecovery,
+    onCompletePasswordRecovery,
     onClose,
   } = props;
 
@@ -194,8 +205,19 @@ export function AuthDialog(props: AuthDialogProps) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState<RecoveryStep>('none');
+  const [recoveryIdentifier, setRecoveryIdentifier] = useState(settings.username);
+  const [recoveryUsername, setRecoveryUsername] = useState('');
+  const [recoveryMaskedEmail, setRecoveryMaskedEmail] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [recoveryResetToken, setRecoveryResetToken] = useState('');
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [recoveryPasswordRepeat, setRecoveryPasswordRepeat] = useState('');
+  const [recoveryCooldown, setRecoveryCooldown] = useState(0);
+  const [needsEmailWarning, setNeedsEmailWarning] = useState(false);
   const isProfile = mode === 'profile';
   const isRegister = mode === 'register';
+  const isRecovery = recoveryStep !== 'none';
 
   useEffect(() => {
     setUsername(settings.username);
@@ -206,7 +228,29 @@ export function AuthDialog(props: AuthDialogProps) {
     setCaptchaAnswer('');
     setError('');
     setNotice('');
+    setRecoveryStep('none');
+    setRecoveryIdentifier(settings.username);
+    setRecoveryUsername('');
+    setRecoveryMaskedEmail('');
+    setRecoveryCode('');
+    setRecoveryResetToken('');
+    setRecoveryPassword('');
+    setRecoveryPasswordRepeat('');
+    setRecoveryCooldown(0);
+    setNeedsEmailWarning(false);
   }, [mode, settings.username]);
+
+  useEffect(() => {
+    if (recoveryStep !== 'code' || recoveryCooldown <= 0) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setRecoveryCooldown((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [recoveryStep, recoveryCooldown]);
 
   useEffect(() => {
     if (isProfile) {
@@ -218,7 +262,7 @@ export function AuthDialog(props: AuthDialogProps) {
     setProfileEmail(accountProfile?.email ?? '');
   }, [accountProfile?.email]);
 
-  const submit = async () => {
+  const submit = async (allowMissingEmail = false) => {
     setError('');
     setNotice('');
 
@@ -249,6 +293,11 @@ export function AuthDialog(props: AuthDialogProps) {
       return;
     }
 
+    if (isRegister && !email.trim() && !allowMissingEmail) {
+      setNeedsEmailWarning(true);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (isRegister) {
@@ -264,6 +313,30 @@ export function AuthDialog(props: AuthDialogProps) {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const openRecovery = () => {
+    setError('');
+    setNotice('');
+    setRecoveryStep('start');
+    setRecoveryIdentifier(username.trim() || settings.username);
+    setRecoveryUsername('');
+    setRecoveryMaskedEmail('');
+    setRecoveryCode('');
+    setRecoveryResetToken('');
+    setRecoveryPassword('');
+    setRecoveryPasswordRepeat('');
+    setRecoveryCooldown(0);
+  };
+
+  const closeRecovery = () => {
+    setRecoveryStep('none');
+    setError('');
+    setNotice('');
+    setRecoveryCode('');
+    setRecoveryResetToken('');
+    setRecoveryPassword('');
+    setRecoveryPasswordRepeat('');
   };
 
   const logout = async () => {
@@ -328,21 +401,102 @@ export function AuthDialog(props: AuthDialogProps) {
     }
   };
 
-  const recoverPassword = async () => {
+  const startRecovery = async () => {
     setError('');
     setNotice('');
 
-    if (!username.trim()) {
-      setError('Укажите ник игрока.');
+    if (!recoveryIdentifier.trim()) {
+      setError('Укажите ник игрока или почту.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const message = await onRecoverPassword(username.trim());
-      setNotice(message);
+      const result = await onStartPasswordRecovery(recoveryIdentifier.trim());
+      setRecoveryUsername(result.username);
+      setRecoveryMaskedEmail(result.maskedEmail);
+      setRecoveryCooldown(result.cooldownSeconds);
+      setRecoveryCode('');
+      setRecoveryStep('code');
+      setNotice(result.message);
     } catch (recoveryError) {
       setError(getReadableAuthError(recoveryError, 'Не удалось начать восстановление пароля.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const resendRecovery = async () => {
+    setError('');
+    setNotice('');
+
+    if (!recoveryUsername) {
+      setRecoveryStep('start');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await onResendPasswordRecovery(recoveryUsername);
+      setRecoveryMaskedEmail(result.maskedEmail);
+      setRecoveryCooldown(result.cooldownSeconds);
+      setRecoveryCode('');
+      setNotice(result.message);
+    } catch (recoveryError) {
+      setError(getReadableAuthError(recoveryError, 'Не удалось отправить код повторно.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const verifyRecovery = async () => {
+    setError('');
+    setNotice('');
+
+    if (!recoveryCode.trim()) {
+      setError('Введите код из письма.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await onVerifyPasswordRecovery(recoveryUsername, recoveryCode.trim());
+      setRecoveryResetToken(result.resetToken);
+      setRecoveryPassword('');
+      setRecoveryPasswordRepeat('');
+      setRecoveryStep('password');
+      setNotice(result.message);
+    } catch (recoveryError) {
+      setError(getReadableAuthError(recoveryError, 'Код не подошел. Проверьте письмо и попробуйте еще раз.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const completeRecovery = async () => {
+    setError('');
+    setNotice('');
+
+    if (!recoveryPassword) {
+      setError('Введите новый пароль.');
+      return;
+    }
+
+    if (recoveryPassword !== recoveryPasswordRepeat) {
+      setError('Новый пароль и повтор не совпадают.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await onCompletePasswordRecovery(recoveryUsername, recoveryResetToken, recoveryPassword);
+      setRecoveryPassword('');
+      setRecoveryPasswordRepeat('');
+      setRecoveryResetToken('');
+      setRecoveryStep('done');
+      setNotice(result.message || 'Пароль успешно изменен.');
+    } catch (recoveryError) {
+      setError(getReadableAuthError(recoveryError, 'Не удалось изменить пароль.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -355,7 +509,7 @@ export function AuthDialog(props: AuthDialogProps) {
           <div>
             <p className="eyebrow">FORGE WORLD ACCOUNT</p>
             <h2>
-              {isProfile ? 'Профиль игрока' : isRegister ? 'Регистрация' : 'Вход'}
+              {isProfile ? 'Профиль игрока' : isRecovery ? 'Восстановление' : isRegister ? 'Регистрация' : 'Вход'}
             </h2>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Закрыть окно входа">
@@ -433,6 +587,106 @@ export function AuthDialog(props: AuthDialogProps) {
               Выйти из аккаунта
             </button>
           </section>
+        ) : isRecovery ? (
+          <section className="auth-form-card recovery-card">
+            {recoveryStep === 'start' ? (
+              <>
+                <p className="auth-helper-text">
+                  Укажите ник игрока или почту, привязанную к аккаунту. На почту придет код подтверждения.
+                </p>
+                <label className="field-label" htmlFor="recovery-identifier">
+                  Ник или почта
+                </label>
+                <input
+                  id="recovery-identifier"
+                  className="text-input"
+                  value={recoveryIdentifier}
+                  onChange={(event) => setRecoveryIdentifier(event.target.value)}
+                  placeholder="Wayfarer или name@example.com"
+                />
+                <button type="button" className="ghost-button auth-submit-button" onClick={() => void startRecovery()} disabled={isSubmitting}>
+                  {isSubmitting ? 'Отправляем...' : 'Получить код'}
+                </button>
+              </>
+            ) : null}
+
+            {recoveryStep === 'code' ? (
+              <>
+                <p className="auth-helper-text">
+                  Код отправлен на {recoveryMaskedEmail || 'привязанную почту'}. Введите его ниже, чтобы подтвердить сброс пароля.
+                </p>
+                <label className="field-label" htmlFor="recovery-code">
+                  Код из письма
+                </label>
+                <input
+                  id="recovery-code"
+                  className="text-input"
+                  value={recoveryCode}
+                  onChange={(event) => setRecoveryCode(event.target.value)}
+                  placeholder="000000"
+                />
+                <div className="recovery-actions">
+                  <button type="button" className="ghost-button auth-submit-button" onClick={() => void verifyRecovery()} disabled={isSubmitting}>
+                    {isSubmitting ? 'Проверяем...' : 'Подтвердить код'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button auth-secondary-button"
+                    onClick={() => void resendRecovery()}
+                    disabled={isSubmitting || recoveryCooldown > 0}
+                  >
+                    {recoveryCooldown > 0 ? `Еще раз через ${recoveryCooldown}с` : 'Отправить еще раз'}
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {recoveryStep === 'password' ? (
+              <>
+                <p className="auth-helper-text">
+                  Код подтвержден. Задайте новый пароль для аккаунта {recoveryUsername}.
+                </p>
+                <label className="field-label" htmlFor="recovery-password">
+                  Новый пароль
+                </label>
+                <PasswordInput
+                  id="recovery-password"
+                  value={recoveryPassword}
+                  onChange={setRecoveryPassword}
+                  placeholder="Введите новый пароль"
+                />
+                <label className="field-label" htmlFor="recovery-password-repeat">
+                  Повтор пароля
+                </label>
+                <PasswordInput
+                  id="recovery-password-repeat"
+                  value={recoveryPasswordRepeat}
+                  onChange={setRecoveryPasswordRepeat}
+                  placeholder="Повторите новый пароль"
+                />
+                <button type="button" className="ghost-button auth-submit-button" onClick={() => void completeRecovery()} disabled={isSubmitting}>
+                  {isSubmitting ? 'Сохраняем...' : 'Сменить пароль'}
+                </button>
+              </>
+            ) : null}
+
+            {recoveryStep === 'done' ? (
+              <>
+                <p className="auth-notice">Пароль успешно изменен.</p>
+                <button type="button" className="ghost-button auth-submit-button" onClick={closeRecovery}>
+                  Вернуться ко входу
+                </button>
+              </>
+            ) : null}
+
+            {recoveryStep !== 'done' && notice ? <p className="auth-notice">{notice}</p> : null}
+            {error ? <p className="auth-error">{error}</p> : null}
+            {recoveryStep !== 'done' ? (
+              <button type="button" className="auth-inline-button recovery-back-button" onClick={closeRecovery} disabled={isSubmitting}>
+                Вернуться ко входу
+              </button>
+            ) : null}
+          </section>
         ) : (
           <section className="auth-form-card">
             <label className="field-label" htmlFor="auth-username">
@@ -461,7 +715,7 @@ export function AuthDialog(props: AuthDialogProps) {
               <button
                 type="button"
                 className="auth-inline-button"
-                onClick={() => void recoverPassword()}
+                onClick={openRecovery}
                 disabled={isSubmitting}
               >
                 забыли пароль?
@@ -497,7 +751,10 @@ export function AuthDialog(props: AuthDialogProps) {
                   className="text-input"
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setNeedsEmailWarning(false);
+                  }}
                   placeholder="name@example.com"
                 />
 
@@ -515,7 +772,7 @@ export function AuthDialog(props: AuthDialogProps) {
                     }}
                     aria-label="Новая проверка"
                   >
-                    <GlyphIcon name="refresh" />
+                    <img className="captcha-refresh-icon" src={reloadCaptchaIcon} alt="" />
                   </button>
                 </div>
                 <input
@@ -525,6 +782,22 @@ export function AuthDialog(props: AuthDialogProps) {
                   placeholder="Ответ"
                 />
               </>
+            ) : null}
+
+            {needsEmailWarning ? (
+              <div className="auth-warning-card">
+                <p>
+                  Без почты восстановить пароль через лаунчер не получится. Продолжить регистрацию без почты?
+                </p>
+                <div className="auth-warning-actions">
+                  <button type="button" className="ghost-button auth-secondary-button" onClick={() => setNeedsEmailWarning(false)}>
+                    Указать почту
+                  </button>
+                  <button type="button" className="ghost-button auth-secondary-button" onClick={() => void submit(true)} disabled={isSubmitting}>
+                    Продолжить
+                  </button>
+                </div>
+              </div>
             ) : null}
 
             {notice ? <p className="auth-notice">{notice}</p> : null}

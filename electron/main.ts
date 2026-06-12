@@ -13,12 +13,14 @@ import {
   Notification,
   screen,
   shell,
+  Tray,
 } from 'electron';
 import type {
   AuthServerStatusPayload,
   LaunchStatePayload,
   LauncherBootstrap,
   LauncherContent,
+  LauncherSettings,
   LauncherStaticConfig,
   LauncherUpdateInfo,
   ServerStatusPayload,
@@ -27,13 +29,16 @@ import { IPC_CHANNELS } from '../src/shared/constants';
 import {
   checkLauncherAuthStatus,
   changeLauncherAccountPassword,
+  completeLauncherPasswordRecovery,
   getLauncherAccountProfile,
   loginLauncherAccount,
   logoutLauncherAccount,
   prepareLauncherAuthSession,
   registerLauncherAccount,
+  resendLauncherPasswordRecovery,
   startLauncherPasswordRecovery,
   updateLauncherAccountEmail,
+  verifyLauncherPasswordRecovery,
 } from './auth-service';
 import {
   readDistributionManifestFrom,
@@ -61,6 +66,8 @@ import { fetchAvailableUpdate } from './update-check';
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL ?? 'http://127.0.0.1:5173';
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let isAppQuitting = false;
 let launchState: LaunchStatePayload = {
   phase: 'idle',
   message: 'Лаунчер готов к запуску.',
@@ -129,6 +136,92 @@ function getWindowIconPath() {
   return path.join(app.getAppPath(), 'ico', 'forgeworld_multisize.ico');
 }
 
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function applyStartupSetting(settings: LauncherSettings) {
+  app.setLoginItemSettings({
+    openAtLogin: settings.launchAtSystemStartup,
+    path: process.execPath,
+  });
+}
+
+function updateTray(config: LauncherStaticConfig, settings: LauncherSettings) {
+  if (!settings.minimizeToTrayOnClose) {
+    if (tray && !tray.isDestroyed()) {
+      tray.destroy();
+    }
+    tray = null;
+    return;
+  }
+
+  if (!tray || tray.isDestroyed()) {
+    tray = new Tray(getWindowIconPath());
+    tray.setToolTip('Forge World Launcher');
+    tray.on('click', showMainWindow);
+    tray.on('double-click', showMainWindow);
+  }
+
+  const profileName = settings.username.trim() || 'не выбран';
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: `Профиль: ${profileName}`,
+      enabled: false,
+    },
+    {
+      label: `Версия: v${config.launcherVersion}`,
+      enabled: false,
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Выход',
+      click: () => {
+        isAppQuitting = true;
+        app.quit();
+      },
+    },
+  ]));
+}
+
+function syncSystemSettings(config: LauncherStaticConfig, settings: LauncherSettings) {
+  applyStartupSetting(settings);
+  updateTray(config, settings);
+}
+
+async function closeOrHideWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const config = await readStaticConfig();
+  const settings = await loadSettings(config);
+  syncSystemSettings(config, settings);
+
+  if (settings.minimizeToTrayOnClose && !isAppQuitting) {
+    mainWindow.hide();
+    return;
+  }
+
+  isAppQuitting = true;
+  app.quit();
+}
+
 function reportFatalError(message: string, error?: unknown) {
   writeLog('ERROR', message, error);
 
@@ -174,6 +267,7 @@ async function loadBootstrap(): Promise<LauncherBootstrap> {
     lastLauncherContent = EMPTY_LAUNCHER_CONTENT;
   }
   const settings = await loadSettings(config);
+  syncSystemSettings(config, settings);
   const bundledDistributionDirectory = getBundledDistributionDirectory();
   const bundledManifest = await readDistributionManifestFrom(bundledDistributionDirectory);
   const gameRoot = getGameRoot(config);
@@ -720,6 +814,15 @@ function createWindow() {
     writeLog('ERROR', `Renderer process exited: ${details.reason} (code ${details.exitCode})`);
   });
 
+  mainWindow.on('close', (event) => {
+    if (isAppQuitting) {
+      return;
+    }
+
+    event.preventDefault();
+    void closeOrHideWindow();
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -736,7 +839,9 @@ async function registerIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.saveSettings, async (_event, patch) => {
     const config = await readStaticConfig();
-    return saveSettings(config, patch);
+    const settings = await saveSettings(config, patch);
+    syncSystemSettings(config, settings);
+    return settings;
   });
 
   ipcMain.handle(IPC_CHANNELS.loginAccount, async (_event, username: string, password: string) => {
@@ -747,6 +852,7 @@ async function registerIpcHandlers() {
       authToken: result.token ?? '',
       authTokenExpiresAt: result.expiresAt ?? '',
     });
+    syncSystemSettings(config, settings);
 
     return {
       ok: result.ok,
@@ -764,6 +870,7 @@ async function registerIpcHandlers() {
       authToken: result.token ?? '',
       authTokenExpiresAt: result.expiresAt ?? '',
     });
+    syncSystemSettings(config, settings);
 
     return {
       ok: result.ok,
@@ -779,11 +886,13 @@ async function registerIpcHandlers() {
     await logoutLauncherAccount(config, settings.username, settings.authToken)
       .catch(() => undefined);
 
-    return saveSettings(config, {
+    const nextSettings = await saveSettings(config, {
       username: '',
       authToken: '',
       authTokenExpiresAt: '',
     });
+    syncSystemSettings(config, nextSettings);
+    return nextSettings;
   });
 
   ipcMain.handle(IPC_CHANNELS.getAccountProfile, async () => {
@@ -810,9 +919,24 @@ async function registerIpcHandlers() {
     );
   });
 
-  ipcMain.handle(IPC_CHANNELS.startPasswordRecovery, async (_event, username: string) => {
+  ipcMain.handle(IPC_CHANNELS.startPasswordRecovery, async (_event, identifier: string) => {
     const config = await readStaticConfig();
-    return startLauncherPasswordRecovery(config, username.trim());
+    return startLauncherPasswordRecovery(config, identifier.trim());
+  });
+
+  ipcMain.handle(IPC_CHANNELS.resendPasswordRecovery, async (_event, username: string) => {
+    const config = await readStaticConfig();
+    return resendLauncherPasswordRecovery(config, username.trim());
+  });
+
+  ipcMain.handle(IPC_CHANNELS.verifyPasswordRecovery, async (_event, username: string, code: string) => {
+    const config = await readStaticConfig();
+    return verifyLauncherPasswordRecovery(config, username.trim(), code.trim());
+  });
+
+  ipcMain.handle(IPC_CHANNELS.completePasswordRecovery, async (_event, username: string, resetToken: string, newPassword: string) => {
+    const config = await readStaticConfig();
+    return completeLauncherPasswordRecovery(config, username.trim(), resetToken, newPassword);
   });
 
   ipcMain.handle(IPC_CHANNELS.checkAuthStatus, async () => {
@@ -886,7 +1010,7 @@ async function registerIpcHandlers() {
   });
 
   ipcMain.handle(IPC_CHANNELS.closeWindow, async () => {
-    app.quit();
+    await closeOrHideWindow();
   });
 
   ipcMain.handle(IPC_CHANNELS.openExternal, async (_event, url: string) => {
@@ -953,6 +1077,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  isAppQuitting = true;
   if (statusInterval) {
     clearInterval(statusInterval);
     statusInterval = null;
@@ -964,6 +1089,10 @@ app.on('before-quit', () => {
   if (contentInterval) {
     clearInterval(contentInterval);
     contentInterval = null;
+  }
+  if (tray && !tray.isDestroyed()) {
+    tray.destroy();
+    tray = null;
   }
 });
 

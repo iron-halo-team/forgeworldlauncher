@@ -88,6 +88,8 @@ export interface LauncherSettings {
   ramConfiguredManually: boolean;
   hideLauncherOnGameStart: boolean;
   closeLauncherWhenGameCloses: boolean;
+  launchAtSystemStartup: boolean;
+  minimizeToTrayOnClose: boolean;
   directConnectOnLaunch: boolean;
 }
 
@@ -115,6 +117,23 @@ export interface LauncherAccountProfileResult {
   ok: boolean;
   message: string;
   profile: LauncherAccountProfile;
+}
+
+export interface PasswordRecoveryStartResult {
+  ok: boolean;
+  message: string;
+  username: string;
+  maskedEmail: string;
+  cooldownSeconds: number;
+  expiresInSeconds: number;
+}
+
+export interface PasswordRecoveryVerifyResult {
+  ok: boolean;
+  message: string;
+  username: string;
+  resetToken: string;
+  expiresInSeconds: number;
 }
 
 export interface DistributionManifest {
@@ -173,7 +192,10 @@ export interface LauncherApi {
   getAccountProfile(): Promise<LauncherAccountProfileResult>;
   updateAccountEmail(email: string): Promise<LauncherAccountProfileResult>;
   changeAccountPassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean; message: string }>;
-  startPasswordRecovery(username: string): Promise<{ ok: boolean; message: string; hasEmail?: boolean }>;
+  startPasswordRecovery(identifier: string): Promise<PasswordRecoveryStartResult>;
+  resendPasswordRecovery(username: string): Promise<PasswordRecoveryStartResult>;
+  verifyPasswordRecovery(username: string, code: string): Promise<PasswordRecoveryVerifyResult>;
+  completePasswordRecovery(username: string, resetToken: string, newPassword: string): Promise<{ ok: boolean; message: string }>;
   checkAuthStatus(): Promise<AuthServerStatusPayload>;
   launchGame(): Promise<void>;
   minimizeWindow(): Promise<void>;

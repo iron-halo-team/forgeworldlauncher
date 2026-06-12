@@ -17,15 +17,21 @@ import org.bukkit.event.server.ServerCommandEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -41,6 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import javax.net.ssl.SSLSocketFactory;
 
 public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements Listener {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
@@ -49,6 +56,7 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     private final SecureRandom secureRandom = new SecureRandom();
     private final Map<String, LaunchSession> launchSessions = new ConcurrentHashMap<>();
     private final Map<String, RememberSession> rememberSessions = new ConcurrentHashMap<>();
+    private final Map<String, RecoveryChallenge> recoveryChallenges = new ConcurrentHashMap<>();
     private final Map<String, RateBucket> rateBuckets = new ConcurrentHashMap<>();
     private final Object sessionsLock = new Object();
 
@@ -83,6 +91,23 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     private int rateLimitWindowMillis;
     private int rateLimitMaxAttempts;
     private boolean logSuccesses;
+    private boolean recoveryEnabled;
+    private int recoveryCodeLength;
+    private int recoveryMaxAttempts;
+    private long recoveryCodeTtlMillis;
+    private long recoveryResendCooldownMillis;
+    private long recoveryVerifiedTtlMillis;
+    private boolean smtpEnabled;
+    private boolean smtpSsl;
+    private boolean smtpStartTls;
+    private boolean smtpAuth;
+    private String smtpHost;
+    private int smtpPort;
+    private int smtpTimeoutMillis;
+    private String smtpUsername;
+    private String smtpPassword;
+    private String smtpFromEmail;
+    private String smtpFromName;
 
     private volatile int cachedPlayersOnline;
     private volatile int cachedMaxPlayers;
@@ -96,6 +121,7 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        saveDefaultEmailTemplate();
         reloadBridgeConfig();
 
         authMeApi = AuthMeApi.getInstance();
@@ -113,6 +139,13 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
         startSessionCleanupTask();
         startHttpServer();
         startRelayWorker();
+    }
+
+    private void saveDefaultEmailTemplate() {
+        File templateFile = new File(getDataFolder(), "email_confirmation.html");
+        if (!templateFile.exists()) {
+            saveResource("email_confirmation.html", false);
+        }
     }
 
     @Override
@@ -167,6 +200,34 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
         maxPasswordLength = Math.max(minPasswordLength, getConfig().getInt("password.max-length", 128));
         usernamePattern = Pattern.compile(getConfig().getString("username.regex", DEFAULT_USERNAME_REGEX));
         logSuccesses = getConfig().getBoolean("logging.log-successes", false);
+
+        recoveryEnabled = getConfig().getBoolean("recovery.enabled", true);
+        recoveryCodeLength = Math.min(10, Math.max(4, getConfig().getInt("recovery.code-length", 6)));
+        recoveryMaxAttempts = Math.max(1, getConfig().getInt("recovery.max-attempts", 5));
+        recoveryCodeTtlMillis = Math.max(
+            60_000L,
+            getConfig().getLong("recovery.code-ttl-seconds", 900L) * 1_000L
+        );
+        recoveryResendCooldownMillis = Math.max(
+            10_000L,
+            getConfig().getLong("recovery.resend-cooldown-seconds", 60L) * 1_000L
+        );
+        recoveryVerifiedTtlMillis = Math.max(
+            60_000L,
+            getConfig().getLong("recovery.verified-token-ttl-seconds", 600L) * 1_000L
+        );
+
+        smtpEnabled = getConfig().getBoolean("smtp.enabled", false);
+        smtpHost = getConfig().getString("smtp.host", "");
+        smtpPort = getConfig().getInt("smtp.port", 587);
+        smtpSsl = getConfig().getBoolean("smtp.ssl", false);
+        smtpStartTls = getConfig().getBoolean("smtp.starttls", true);
+        smtpAuth = getConfig().getBoolean("smtp.auth", true);
+        smtpTimeoutMillis = Math.max(2_000, getConfig().getInt("smtp.timeout-millis", 10_000));
+        smtpUsername = getConfig().getString("smtp.username", "");
+        smtpPassword = getConfig().getString("smtp.password", "");
+        smtpFromEmail = getConfig().getString("smtp.from-email", smtpUsername);
+        smtpFromName = getConfig().getString("smtp.from-name", "Forge World");
     }
 
     private void startHttpServer() {
@@ -185,7 +246,11 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
             createSafeContext("/auth/profile", this::handleProfile);
             createSafeContext("/auth/email", this::handleEmailUpdate);
             createSafeContext("/auth/password", this::handlePasswordChange);
-            createSafeContext("/auth/recovery", this::handlePasswordRecovery);
+            createSafeContext("/auth/recovery", this::handleRecoveryStart);
+            createSafeContext("/auth/recovery/start", this::handleRecoveryStart);
+            createSafeContext("/auth/recovery/resend", this::handleRecoveryResend);
+            createSafeContext("/auth/recovery/verify", this::handleRecoveryVerify);
+            createSafeContext("/auth/recovery/complete", this::handleRecoveryComplete);
             createSafeContext("/server/status", this::handleServerStatus);
 
             httpExecutor = Executors.newFixedThreadPool(httpThreads, task -> {
@@ -625,11 +690,105 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
         sendAuthOutcome(exchange, outcome);
     }
 
-    private void handlePasswordRecovery(HttpExchange exchange) throws IOException {
-        AuthOutcome outcome = handleAccountAction(exchange, request -> startPasswordRecovery(
-            request.getOrDefault("username", "").trim()
+    private void handleRecoveryStart(HttpExchange exchange) throws IOException {
+        handleRecoveryEmailStep(exchange, false);
+    }
+
+    private void handleRecoveryResend(HttpExchange exchange) throws IOException {
+        handleRecoveryEmailStep(exchange, true);
+    }
+
+    private void handleRecoveryVerify(HttpExchange exchange) throws IOException {
+        RecoveryOutcome outcome = handleRecoveryAction(exchange, request -> verifyPasswordRecovery(
+            request.getOrDefault("username", "").trim(),
+            request.getOrDefault("code", "").trim()
         ));
-        sendAuthOutcome(exchange, outcome);
+        sendRecoveryOutcome(exchange, outcome);
+    }
+
+    private void handleRecoveryComplete(HttpExchange exchange) throws IOException {
+        RecoveryOutcome outcome = handleRecoveryAction(exchange, request -> completePasswordRecovery(
+            request.getOrDefault("username", "").trim(),
+            request.getOrDefault("resetToken", ""),
+            request.getOrDefault("newPassword", "")
+        ));
+        sendRecoveryOutcome(exchange, outcome);
+    }
+
+    private void handleRecoveryEmailStep(HttpExchange exchange, boolean resend) throws IOException {
+        if (handleOptions(exchange)) {
+            return;
+        }
+
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            sendRecoveryOutcome(exchange, RecoveryOutcome.error(405, "Метод не поддерживается."));
+            return;
+        }
+
+        String ipAddress = getRequestIp(exchange);
+        if (isRateLimited(ipAddress)) {
+            sendRecoveryOutcome(exchange, RecoveryOutcome.error(429, "Слишком много попыток. Подождите немного."));
+            return;
+        }
+
+        try {
+            Map<String, String> request = JsonStrings.parse(readBody(exchange));
+            String identifier = request.getOrDefault(resend ? "username" : "identifier", "").trim();
+            if (identifier.isBlank()) {
+                identifier = request.getOrDefault("username", "").trim();
+            }
+            String recoveryIdentifier = identifier;
+
+            RecoveryPrepared prepared = Bukkit.getScheduler()
+                .callSyncMethod(this, () -> preparePasswordRecovery(recoveryIdentifier, resend))
+                .get();
+
+            if (!prepared.outcome.ok) {
+                sendRecoveryOutcome(exchange, prepared.outcome);
+                return;
+            }
+
+            try {
+                sendRecoveryEmail(prepared);
+            } catch (IOException mailError) {
+                getLogger().warning("Unable to send recovery email for " + prepared.username + ": " + mailError.getMessage());
+                sendRecoveryOutcome(
+                    exchange,
+                    RecoveryOutcome.error(503, "Не удалось отправить письмо восстановления. Попробуйте позже или обратитесь к администрации.")
+                );
+                return;
+            }
+
+            recoveryChallenges.put(normalizeName(prepared.username), prepared.challenge);
+            sendRecoveryOutcome(exchange, prepared.outcome);
+        } catch (IllegalArgumentException error) {
+            sendRecoveryOutcome(exchange, RecoveryOutcome.error(400, "Некорректный запрос восстановления."));
+        } catch (Exception error) {
+            getLogger().warning("Recovery request failed: " + error.getMessage());
+            sendRecoveryOutcome(exchange, RecoveryOutcome.error(500, "Сервер авторизации не ответил вовремя. Попробуйте ещё раз."));
+        }
+    }
+
+    private RecoveryOutcome handleRecoveryAction(HttpExchange exchange, RecoveryAction action) throws IOException {
+        if (handleOptions(exchange)) {
+            return RecoveryOutcome.noResponse();
+        }
+
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            return RecoveryOutcome.error(405, "Метод не поддерживается.");
+        }
+
+        try {
+            Map<String, String> request = JsonStrings.parse(readBody(exchange));
+            return Bukkit.getScheduler()
+                .callSyncMethod(this, () -> action.run(request))
+                .get();
+        } catch (IllegalArgumentException error) {
+            return RecoveryOutcome.error(400, "Некорректный запрос восстановления.");
+        } catch (Exception error) {
+            getLogger().warning("Recovery request failed: " + error.getMessage());
+            return RecoveryOutcome.error(500, "Сервер авторизации не ответил вовремя. Попробуйте ещё раз.");
+        }
     }
 
     private AuthOutcome handleAccountAction(HttpExchange exchange, AccountAction action) throws IOException {
@@ -655,6 +814,12 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     }
 
     private void sendAuthOutcome(HttpExchange exchange, AuthOutcome outcome) throws IOException {
+        if (outcome.statusCode > 0) {
+            sendJson(exchange, outcome.statusCode, outcome.toJson());
+        }
+    }
+
+    private void sendRecoveryOutcome(HttpExchange exchange, RecoveryOutcome outcome) throws IOException {
         if (outcome.statusCode > 0) {
             sendJson(exchange, outcome.statusCode, outcome.toJson());
         }
@@ -789,20 +954,382 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     }
 
     private AuthOutcome startPasswordRecovery(String username) {
-        if (!usernamePattern.matcher(username).matches()) {
-            return AuthOutcome.error(400, "Укажите корректный ник игрока.");
+        return AuthOutcome.error(410, "Обновите лаунчер: восстановление пароля теперь выполняется через новый пошаговый API.");
+    }
+
+    private RecoveryPrepared preparePasswordRecovery(String identifier, boolean resend) {
+        if (!recoveryEnabled) {
+            return RecoveryPrepared.error(503, "Восстановление пароля сейчас отключено.");
         }
 
-        if (!authMeApi.isRegistered(username)) {
-            return AuthOutcome.error(404, "Аккаунт с таким ником не зарегистрирован.");
+        if (!isSmtpConfigured()) {
+            return RecoveryPrepared.error(503, "Восстановление по почте пока не настроено. Обратитесь к администрации сервера.");
         }
 
-        Optional<String> email = getEmail(username);
+        Optional<String> username = resolveRecoveryUsername(identifier);
+        if (username.isEmpty()) {
+            return RecoveryPrepared.error(404, "Аккаунт с такими данными не найден.");
+        }
+
+        String accountName = username.get();
+        Optional<String> email = getEmail(accountName);
         if (email.isEmpty()) {
-            return AuthOutcome.error(409, "К аккаунту не привязана почта. Для восстановления пароля обратитесь к администрации сервера.");
+            return RecoveryPrepared.error(409, "К аккаунту не привязана почта. Для восстановления пароля обратитесь к администрации сервера.");
         }
 
-        return AuthOutcome.error(501, "К аккаунту привязана почта, но восстановление письмом из лаунчера недоступно в AuthMe API. Обратитесь к администрации сервера.");
+        long now = System.currentTimeMillis();
+        String usernameKey = normalizeName(accountName);
+        RecoveryChallenge previous = recoveryChallenges.get(usernameKey);
+        if (previous != null && previous.nextSendAtMillis > now) {
+            int retryAfterSeconds = secondsBetween(now, previous.nextSendAtMillis);
+            return RecoveryPrepared.error(
+                429,
+                "Повторная отправка будет доступна через " + retryAfterSeconds + " сек.",
+                accountName,
+                maskEmail(email.get()),
+                retryAfterSeconds,
+                secondsBetween(now, previous.expiresAtMillis)
+            );
+        }
+
+        String code = generateRecoveryCode();
+        RecoveryChallenge challenge = new RecoveryChallenge(
+            accountName,
+            email.get(),
+            sha256(code),
+            now + recoveryCodeTtlMillis,
+            now + recoveryResendCooldownMillis,
+            recoveryMaxAttempts,
+            "",
+            0L
+        );
+        RecoveryOutcome outcome = RecoveryOutcome.start(
+            resend ? "Новый код отправлен на привязанную почту." : "Код восстановления отправлен на привязанную почту.",
+            accountName,
+            maskEmail(email.get()),
+            secondsBetween(now, challenge.nextSendAtMillis),
+            secondsBetween(now, challenge.expiresAtMillis)
+        );
+
+        return new RecoveryPrepared(outcome, accountName, email.get(), code, challenge);
+    }
+
+    private RecoveryOutcome verifyPasswordRecovery(String username, String code) {
+        if (!usernamePattern.matcher(username).matches() || code.isBlank()) {
+            return RecoveryOutcome.error(400, "Укажите ник и код восстановления.");
+        }
+
+        String usernameKey = normalizeName(username);
+        RecoveryChallenge challenge = recoveryChallenges.get(usernameKey);
+        long now = System.currentTimeMillis();
+        RecoveryOutcome challengeError = validateRecoveryChallenge(challenge, now);
+        if (challengeError != null) {
+            recoveryChallenges.remove(usernameKey);
+            return challengeError;
+        }
+
+        if (challenge.attemptsLeft <= 0) {
+            recoveryChallenges.remove(usernameKey);
+            return RecoveryOutcome.error(429, "Слишком много неверных кодов. Запросите новый код восстановления.");
+        }
+
+        if (!constantTimeEquals(challenge.codeHash, sha256(code))) {
+            RecoveryChallenge updated = new RecoveryChallenge(
+                challenge.username,
+                challenge.email,
+                challenge.codeHash,
+                challenge.expiresAtMillis,
+                challenge.nextSendAtMillis,
+                challenge.attemptsLeft - 1,
+                challenge.resetTokenHash,
+                challenge.verifiedUntilMillis
+            );
+            recoveryChallenges.put(usernameKey, updated);
+            return RecoveryOutcome.error(401, "Неверный код. Осталось попыток: " + updated.attemptsLeft + ".");
+        }
+
+        String resetToken = generateToken();
+        RecoveryChallenge verified = new RecoveryChallenge(
+            challenge.username,
+            challenge.email,
+            challenge.codeHash,
+            challenge.expiresAtMillis,
+            challenge.nextSendAtMillis,
+            challenge.attemptsLeft,
+            sha256(resetToken),
+            now + recoveryVerifiedTtlMillis
+        );
+        recoveryChallenges.put(usernameKey, verified);
+        return RecoveryOutcome.verified(
+            "Код подтверждён. Введите новый пароль.",
+            challenge.username,
+            resetToken,
+            secondsBetween(now, verified.verifiedUntilMillis)
+        );
+    }
+
+    private RecoveryOutcome completePasswordRecovery(String username, String resetToken, String newPassword) {
+        if (!usernamePattern.matcher(username).matches() || resetToken.isBlank()) {
+            return RecoveryOutcome.error(400, "Сессия восстановления некорректна. Запросите новый код.");
+        }
+
+        String usernameKey = normalizeName(username);
+        RecoveryChallenge challenge = recoveryChallenges.get(usernameKey);
+        long now = System.currentTimeMillis();
+        RecoveryOutcome challengeError = validateRecoveryChallenge(challenge, now);
+        if (challengeError != null) {
+            recoveryChallenges.remove(usernameKey);
+            return challengeError;
+        }
+
+        if (challenge.verifiedUntilMillis < now
+            || challenge.resetTokenHash.isBlank()
+            || !constantTimeEquals(challenge.resetTokenHash, sha256(resetToken))) {
+            return RecoveryOutcome.error(401, "Подтверждение восстановления истекло. Запросите новый код.");
+        }
+
+        String validationError = validateCredentials(challenge.username, newPassword);
+        if (validationError != null) {
+            return RecoveryOutcome.error(400, validationError);
+        }
+
+        authMeApi.changePassword(challenge.username, newPassword);
+        recoveryChallenges.remove(usernameKey);
+        rememberSessions.remove(usernameKey);
+        launchSessions.remove(usernameKey);
+        saveRememberSessions();
+
+        return RecoveryOutcome.completed("Пароль успешно изменён.");
+    }
+
+    private RecoveryOutcome validateRecoveryChallenge(RecoveryChallenge challenge, long now) {
+        if (challenge == null) {
+            return RecoveryOutcome.error(404, "Код восстановления не найден. Запросите новый код.");
+        }
+
+        if (challenge.expiresAtMillis < now) {
+            return RecoveryOutcome.error(410, "Код восстановления истёк. Запросите новый код.");
+        }
+
+        return null;
+    }
+
+    private Optional<String> resolveRecoveryUsername(String identifier) {
+        String value = identifier.trim();
+        if (value.isBlank()) {
+            return Optional.empty();
+        }
+
+        if (usernamePattern.matcher(value).matches()) {
+            return authMeApi.isRegistered(value) ? Optional.of(value) : Optional.empty();
+        }
+
+        if (!EMAIL_PATTERN.matcher(value).matches()) {
+            return Optional.empty();
+        }
+
+        String targetEmail = value.toLowerCase(Locale.ROOT);
+        for (String candidate : authMeApi.getRegisteredNames()) {
+            Optional<String> candidateEmail = getEmail(candidate);
+            if (candidateEmail.isPresent() && candidateEmail.get().toLowerCase(Locale.ROOT).equals(targetEmail)) {
+                return Optional.of(candidate);
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private boolean isSmtpConfigured() {
+        if (!smtpEnabled || smtpHost == null || smtpHost.isBlank() || smtpFromEmail == null || smtpFromEmail.isBlank()) {
+            return false;
+        }
+
+        return !smtpAuth || (!smtpUsername.isBlank() && !smtpPassword.isBlank());
+    }
+
+    private String generateRecoveryCode() {
+        int bound = 1;
+        for (int index = 0; index < recoveryCodeLength; index += 1) {
+            bound *= 10;
+        }
+
+        int min = bound / 10;
+        int value = min + secureRandom.nextInt(bound - min);
+        return String.format(Locale.ROOT, "%0" + recoveryCodeLength + "d", value);
+    }
+
+    private int secondsBetween(long nowMillis, long futureMillis) {
+        return Math.max(0, (int) Math.ceil((futureMillis - nowMillis) / 1000.0));
+    }
+
+    private String maskEmail(String email) {
+        int at = email.indexOf('@');
+        if (at <= 1) {
+            return "***" + (at >= 0 ? email.substring(at) : "");
+        }
+
+        String name = email.substring(0, at);
+        String domain = email.substring(at);
+        String visible = name.substring(0, Math.min(2, name.length()));
+        return visible + "***" + domain;
+    }
+
+    private void sendRecoveryEmail(RecoveryPrepared prepared) throws IOException {
+        String subject = "Forge World: код восстановления пароля";
+        String text = "Код восстановления аккаунта " + prepared.username + ": " + prepared.code + "\n\n"
+            + "Код действует " + Math.max(1, recoveryCodeTtlMillis / 60_000L) + " мин.\n"
+            + "Если вы не запрашивали восстановление, просто игнорируйте это письмо.";
+        String html = renderRecoveryEmailHtml(prepared);
+        sendSmtpMail(prepared.email, subject, text, html);
+    }
+
+    private String renderRecoveryEmailHtml(RecoveryPrepared prepared) throws IOException {
+        File templateFile = new File(getDataFolder(), "email_confirmation.html");
+        if (!templateFile.exists()) {
+            saveDefaultEmailTemplate();
+        }
+
+        String template = Files.readString(templateFile.toPath(), StandardCharsets.UTF_8);
+        long expiresMinutes = Math.max(1, recoveryCodeTtlMillis / 60_000L);
+        return template
+            .replace("{{server_name}}", escapeHtml(smtpFromName == null || smtpFromName.isBlank() ? "Forge World" : smtpFromName))
+            .replace("{{username}}", escapeHtml(prepared.username))
+            .replace("{{code}}", escapeHtml(prepared.code))
+            .replace("{{expires_minutes}}", Long.toString(expiresMinutes))
+            .replace("{{year}}", Integer.toString(java.time.Year.now().getValue()));
+    }
+
+    private void sendSmtpMail(String recipient, String subject, String text, String html) throws IOException {
+        Socket socket = null;
+        try {
+            socket = createSmtpSocket();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+
+            expectSmtp(reader, 220);
+            smtpCommand(writer, reader, "EHLO forgeworld.local", 250);
+
+            if (smtpStartTls && !smtpSsl) {
+                smtpCommand(writer, reader, "STARTTLS", 220);
+                socket = ((SSLSocketFactory) SSLSocketFactory.getDefault()).createSocket(socket, smtpHost, smtpPort, true);
+                socket.setSoTimeout(smtpTimeoutMillis);
+                reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+                smtpCommand(writer, reader, "EHLO forgeworld.local", 250);
+            }
+
+            if (smtpAuth) {
+                smtpCommand(writer, reader, "AUTH LOGIN", 334);
+                smtpCommand(writer, reader, Base64.getEncoder().encodeToString(smtpUsername.getBytes(StandardCharsets.UTF_8)), 334);
+                smtpCommand(writer, reader, Base64.getEncoder().encodeToString(smtpPassword.getBytes(StandardCharsets.UTF_8)), 235);
+            }
+
+            smtpCommand(writer, reader, "MAIL FROM:<" + smtpFromEmail + ">", 250);
+            smtpCommand(writer, reader, "RCPT TO:<" + recipient + ">", 250);
+            smtpCommand(writer, reader, "DATA", 354);
+            writer.write(buildEmailMessage(recipient, subject, text, html));
+            writer.write("\r\n.\r\n");
+            writer.flush();
+            expectSmtp(reader, 250);
+            smtpCommand(writer, reader, "QUIT", 221);
+        } finally {
+            if (socket != null) {
+                socket.close();
+            }
+        }
+    }
+
+    private Socket createSmtpSocket() throws IOException {
+        Socket socket = smtpSsl
+            ? SSLSocketFactory.getDefault().createSocket(smtpHost, smtpPort)
+            : new Socket();
+
+        if (!smtpSsl) {
+            socket.connect(new InetSocketAddress(smtpHost, smtpPort), smtpTimeoutMillis);
+        }
+
+        socket.setSoTimeout(smtpTimeoutMillis);
+        return socket;
+    }
+
+    private String buildEmailMessage(String recipient, String subject, String text, String html) {
+        String encodedSubject = encodeMailHeader(subject);
+        String encodedFromName = encodeMailHeader(smtpFromName);
+        String boundary = "ForgeWorldBoundary-" + Long.toUnsignedString(secureRandom.nextLong(), 16);
+        return "From: " + encodedFromName + " <" + smtpFromEmail + ">\r\n"
+            + "To: <" + recipient + ">\r\n"
+            + "Subject: " + encodedSubject + "\r\n"
+            + "MIME-Version: 1.0\r\n"
+            + "Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n"
+            + "\r\n"
+            + "--" + boundary + "\r\n"
+            + "Content-Type: text/plain; charset=UTF-8\r\n"
+            + "Content-Transfer-Encoding: 8bit\r\n"
+            + "\r\n"
+            + escapeSmtpData(text)
+            + "\r\n\r\n"
+            + "--" + boundary + "\r\n"
+            + "Content-Type: text/html; charset=UTF-8\r\n"
+            + "Content-Transfer-Encoding: 8bit\r\n"
+            + "\r\n"
+            + escapeSmtpData(html)
+            + "\r\n\r\n"
+            + "--" + boundary + "--";
+    }
+
+    private String escapeSmtpData(String text) {
+        return text.replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .lines()
+            .map(line -> line.startsWith(".") ? "." + line : line)
+            .reduce((left, right) -> left + "\r\n" + right)
+            .orElse("");
+    }
+
+    private String encodeMailHeader(String value) {
+        return "=?UTF-8?B?" + Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8)) + "?=";
+    }
+
+    private String escapeHtml(String value) {
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;");
+    }
+
+    private void smtpCommand(BufferedWriter writer, BufferedReader reader, String command, int expectedCode) throws IOException {
+        writer.write(command);
+        writer.write("\r\n");
+        writer.flush();
+        expectSmtp(reader, expectedCode);
+    }
+
+    private void expectSmtp(BufferedReader reader, int expectedCode) throws IOException {
+        int code = readSmtpCode(reader);
+        if (code != expectedCode) {
+            throw new IOException("SMTP returned " + code + ", expected " + expectedCode);
+        }
+    }
+
+    private int readSmtpCode(BufferedReader reader) throws IOException {
+        String line;
+        int code = -1;
+        do {
+            line = reader.readLine();
+            if (line == null || line.length() < 3) {
+                throw new IOException("SMTP connection closed");
+            }
+
+            try {
+                code = Integer.parseInt(line.substring(0, 3));
+            } catch (NumberFormatException error) {
+                throw new IOException("Invalid SMTP response: " + line);
+            }
+        } while (line.length() > 3 && line.charAt(3) == '-');
+
+        return code;
     }
 
     private AuthOutcome validateRememberSession(String username, String token) {
@@ -951,6 +1478,7 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
         long now = System.currentTimeMillis();
         launchSessions.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis < now);
         rememberSessions.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis < now);
+        recoveryChallenges.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis < now);
         rateBuckets.entrySet().removeIf(entry -> entry.getValue().resetAtMillis < now);
         saveRememberSessions();
     }
@@ -1113,6 +1641,112 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     private record RememberSession(String tokenHash, long expiresAtMillis, long lastLoginAtMillis) {
     }
 
+    private record RecoveryChallenge(
+        String username,
+        String email,
+        String codeHash,
+        long expiresAtMillis,
+        long nextSendAtMillis,
+        int attemptsLeft,
+        String resetTokenHash,
+        long verifiedUntilMillis
+    ) {
+    }
+
+    private record RecoveryPrepared(
+        RecoveryOutcome outcome,
+        String username,
+        String email,
+        String code,
+        RecoveryChallenge challenge
+    ) {
+        private static RecoveryPrepared error(int statusCode, String message) {
+            return error(statusCode, message, "", "", 0, 0);
+        }
+
+        private static RecoveryPrepared error(
+            int statusCode,
+            String message,
+            String username,
+            String maskedEmail,
+            int cooldownSeconds,
+            int expiresInSeconds
+        ) {
+            return new RecoveryPrepared(
+                RecoveryOutcome.error(statusCode, message, username, maskedEmail, cooldownSeconds, expiresInSeconds),
+                "",
+                "",
+                "",
+                null
+            );
+        }
+    }
+
+    private record RecoveryOutcome(
+        boolean ok,
+        int statusCode,
+        String message,
+        String username,
+        String maskedEmail,
+        int cooldownSeconds,
+        int expiresInSeconds,
+        String resetToken
+    ) {
+        private static RecoveryOutcome noResponse() {
+            return new RecoveryOutcome(true, 0, "", "", "", 0, 0, "");
+        }
+
+        private static RecoveryOutcome error(int statusCode, String message) {
+            return error(statusCode, message, "", "", 0, 0);
+        }
+
+        private static RecoveryOutcome error(
+            int statusCode,
+            String message,
+            String username,
+            String maskedEmail,
+            int cooldownSeconds,
+            int expiresInSeconds
+        ) {
+            return new RecoveryOutcome(false, statusCode, message, username, maskedEmail, cooldownSeconds, expiresInSeconds, "");
+        }
+
+        private static RecoveryOutcome start(
+            String message,
+            String username,
+            String maskedEmail,
+            int cooldownSeconds,
+            int expiresInSeconds
+        ) {
+            return new RecoveryOutcome(true, 200, message, username, maskedEmail, cooldownSeconds, expiresInSeconds, "");
+        }
+
+        private static RecoveryOutcome verified(
+            String message,
+            String username,
+            String resetToken,
+            int expiresInSeconds
+        ) {
+            return new RecoveryOutcome(true, 200, message, username, "", 0, expiresInSeconds, resetToken);
+        }
+
+        private static RecoveryOutcome completed(String message) {
+            return new RecoveryOutcome(true, 200, message, "", "", 0, 0, "");
+        }
+
+        private String toJson() {
+            return "{"
+                + "\"ok\":" + ok + ","
+                + "\"message\":\"" + json(message) + "\","
+                + "\"username\":\"" + json(username) + "\","
+                + "\"maskedEmail\":\"" + json(maskedEmail) + "\","
+                + "\"cooldownSeconds\":" + cooldownSeconds + ","
+                + "\"expiresInSeconds\":" + expiresInSeconds + ","
+                + "\"resetToken\":\"" + json(resetToken) + "\""
+                + "}";
+        }
+    }
+
     private record AuthOutcome(
         boolean ok,
         int statusCode,
@@ -1194,6 +1828,11 @@ public final class ForgeWorldAuthBridgePlugin extends JavaPlugin implements List
     @FunctionalInterface
     private interface AccountAction {
         AuthOutcome run(Map<String, String> request);
+    }
+
+    @FunctionalInterface
+    private interface RecoveryAction {
+        RecoveryOutcome run(Map<String, String> request);
     }
 
     private static final class RateBucket {

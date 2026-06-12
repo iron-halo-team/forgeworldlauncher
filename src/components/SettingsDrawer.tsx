@@ -11,6 +11,8 @@ interface SettingsDrawerProps {
   onRamReset: () => void;
   onToggleHideLauncher: (value: boolean) => void;
   onToggleCloseLauncher: (value: boolean) => void;
+  onToggleLaunchAtStartup: (value: boolean) => void;
+  onToggleMinimizeToTray: (value: boolean) => void;
   onClose: () => void;
 }
 
@@ -42,6 +44,8 @@ export function SettingsDrawer(props: SettingsDrawerProps) {
     onRamReset,
     onToggleHideLauncher,
     onToggleCloseLauncher,
+    onToggleLaunchAtStartup,
+    onToggleMinimizeToTray,
     onClose,
   } = props;
   const ramWarning = getRamWarning(settings.allocatedRamMb, config);
@@ -64,9 +68,6 @@ export function SettingsDrawer(props: SettingsDrawerProps) {
             <div>
               <h3>Выделение памяти</h3>
               <p>Сколько оперативной памяти отдавать Minecraft при запуске.</p>
-              <p className="settings-warning">
-                Не меняйте это значение, если не понимаете, что делаете: неверное выделение памяти может ухудшить запуск и стабильность игры.
-              </p>
               <p className="settings-memory-summary">
                 Рекомендовано: {formatRamLabel(config.minecraft.recommendedRamMb)}. Память устройства: {formatRamLabel(config.minecraft.deviceTotalRamMb)}.
               </p>
@@ -115,6 +116,28 @@ export function SettingsDrawer(props: SettingsDrawerProps) {
               type="checkbox"
               checked={settings.closeLauncherWhenGameCloses}
               onChange={(event) => onToggleCloseLauncher(event.target.checked)}
+            />
+          </label>
+          <label className="toggle-row">
+            <div>
+              <h3>Запускать на старте системы</h3>
+              <p>Лаунчер будет открываться автоматически после входа в Windows.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.launchAtSystemStartup}
+              onChange={(event) => onToggleLaunchAtStartup(event.target.checked)}
+            />
+          </label>
+          <label className="toggle-row">
+            <div>
+              <h3>Скрывать вместо закрытия</h3>
+              <p>Кнопка закрытия будет прятать лаунчер в трей, а не завершать его.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.minimizeToTrayOnClose}
+              onChange={(event) => onToggleMinimizeToTray(event.target.checked)}
             />
           </label>
         </section>
